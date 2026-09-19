@@ -1,4 +1,4 @@
-# Автобой на C++
+# Shieldwall — автобой на C++
 
 Пошаговый автобой двух армий (лабораторная по ППА).
 
@@ -6,7 +6,7 @@
 ```bash
 cmake -B build
 cmake --build build
-./build/battle
+./build/shieldwall
 ```
 
 ## Команда и ветки
