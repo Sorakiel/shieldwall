@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include "UnitCatalog.h"
+#include "UnitFactory.h"
 
 namespace {
 
@@ -131,6 +132,36 @@ void testMissingKind() {
     }
 }
 
+void testFactory() {
+    UnitCatalog catalog = UnitCatalog::loadFromFile("data/units.txt");
+
+    auto light = UnitFactory::create(catalog.spec(UnitKind::Light), "Тиль");
+    CHECK(light->kind() == UnitKind::Light && light->name() == "Тиль");
+    CHECK(light->hp() == 20 && light->maxHp() == 20 && light->meleeAttack() == 7);
+    CHECK(light->defense() == 1 && light->cost() == 10);
+
+    auto heavy = UnitFactory::create(catalog.spec(UnitKind::Heavy), "Гурм");
+    CHECK(heavy->kind() == UnitKind::Heavy && heavy->hp() == 45 && heavy->cost() == 30);
+
+    auto unit = UnitFactory::create(catalog.spec(UnitKind::Archer), "Вейн");
+    CHECK(unit->kind() == UnitKind::Archer);
+    const Archer* archer = dynamic_cast<const Archer*>(unit.get());
+    CHECK(archer != nullptr);
+    if (archer != nullptr) {
+        CHECK(archer->meleeAttack() == 4 && archer->rangedAttack() == 11 && archer->range() == 3);
+    }
+
+    // Строковый тип - тот же путь, что и у файла данных
+    auto byToken = UnitFactory::create("heavy", catalog.spec(UnitKind::Heavy), "Брон");
+    CHECK(byToken->kind() == UnitKind::Heavy);
+    try {
+        UnitFactory::create("cavalry", catalog.spec(UnitKind::Heavy), "Х");
+        CHECK(false);
+    } catch (const DataError& e) {
+        CHECK(contains(e.what(), "cavalry"));
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -138,6 +169,7 @@ int main() {
     testCatalogTolerance();
     testBrokenCatalog();
     testMissingKind();
+    testFactory();
 
     std::cout << "проверок: " << checks << ", провалено: " << failures << "\n";
     return failures == 0 ? 0 : 1;
