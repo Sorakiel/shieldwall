@@ -13,6 +13,7 @@ add_executable(shieldwall
     src/BattleEngine.cpp
     src/UnitCatalog.cpp
     src/UnitFactory.cpp
+    src/ArmyGenerator.cpp
 )
 
 target_include_directories(battle PRIVATE include)
