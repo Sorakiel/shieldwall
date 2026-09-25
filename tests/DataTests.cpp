@@ -1,7 +1,9 @@
 // Тесты зоны "Армии и данные". Запуск: sh tests/run_data_tests.sh из корня репозитория.
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <string>
+#include "ArmyGenerator.h"
 #include "UnitCatalog.h"
 #include "UnitFactory.h"
 
@@ -162,6 +164,83 @@ void testFactory() {
     }
 }
 
+// Состав армии одной строкой: по ней сравниваем армии, не завися от внутренностей Army
+std::string describe(Army& army) {
+    std::ostringstream out;
+    for (std::size_t i = 0; i < army.size(); ++i) {
+        const Unit* u = army.at(i);
+        out << dataformat::kindToken(u->kind()) << ":" << u->name() << " ";
+    }
+    return out.str();
+}
+
+void testGeneratorLimit() {
+    ArmyGenerator generator(UnitCatalog::loadFromFile("data/units.txt"));
+    const int minCost = 10;
+
+    for (int limit : {0, 1, 9, 10, 17, 18, 29, 30, 100, 250, 1000}) {
+        for (std::uint32_t seed = 1; seed <= 60; ++seed) {
+            std::mt19937 rng(seed);
+            Army army = generator.generate(limit, rng);
+            CHECK(army.totalCost() <= limit);
+            // Добирает до конца: остаток меньше самого дешёвого юнита
+            CHECK(limit - army.totalCost() < minCost);
+            if (limit < minCost) {
+                CHECK(army.size() == 0);
+            }
+        }
+    }
+}
+
+void testGeneratorDeterminism() {
+    ArmyGenerator generator(UnitCatalog::loadFromFile("data/units.txt"));
+
+    std::mt19937 first(2024);
+    std::mt19937 second(2024);
+    Army a = generator.generate(300, first);
+    Army b = generator.generate(300, second);
+    CHECK(a.size() > 0);
+    CHECK(describe(a) == describe(b));
+
+    // Разные seed должны давать разные армии, иначе генератор ничего не выбирает
+    std::string reference = describe(a);
+    bool differs = false;
+    for (std::uint32_t seed = 1; seed <= 20 && !differs; ++seed) {
+        std::mt19937 rng(seed);
+        Army other = generator.generate(300, rng);
+        differs = describe(other) != reference;
+    }
+    CHECK(differs);
+}
+
+void testGeneratorSharesOneRng() {
+    // Генератор продолжает чужую последовательность, а не стартует заново:
+    // вторая армия от того же rng не совпадает с первой
+    ArmyGenerator generator(UnitCatalog::loadFromFile("data/units.txt"));
+    std::mt19937 rng(7);
+    Army first = generator.generate(300, rng);
+    Army second = generator.generate(300, rng);
+    CHECK(describe(first) != describe(second));
+
+    std::mt19937 again(7);
+    Army firstAgain = generator.generate(300, again);
+    Army secondAgain = generator.generate(300, again);
+    CHECK(describe(first) == describe(firstAgain));
+    CHECK(describe(second) == describe(secondAgain));
+}
+
+void testGeneratorNames() {
+    ArmyGenerator generator(UnitCatalog::loadFromFile("data/units.txt"));
+    std::mt19937 rng(11);
+    Army army = generator.generate(2000, rng);
+    CHECK(army.size() > 16);
+    for (std::size_t i = 0; i < army.size(); ++i) {
+        for (std::size_t j = i + 1; j < army.size(); ++j) {
+            CHECK(army.at(i)->name() != army.at(j)->name());
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -170,6 +249,10 @@ int main() {
     testBrokenCatalog();
     testMissingKind();
     testFactory();
+    testGeneratorLimit();
+    testGeneratorDeterminism();
+    testGeneratorSharesOneRng();
+    testGeneratorNames();
 
     std::cout << "проверок: " << checks << ", провалено: " << failures << "\n";
     return failures == 0 ? 0 : 1;
