@@ -25,6 +25,14 @@ bool ArmyGenerator::canAfford(int spent, int unitCost, int costLimit) {
     return unitCost > 0 && unitCost <= costLimit - spent;
 }
 
+bool ArmyGenerator::tryBuy(Army& army, const UnitSpec& spec, std::string name, int costLimit) {
+    if (!canAfford(army.totalCost(), spec.cost, costLimit)) {
+        return false;
+    }
+    army.add(UnitFactory::create(spec, std::move(name)));
+    return true;
+}
+
 Army ArmyGenerator::generate(int costLimit, std::mt19937& rng) const {
     Army army;
     std::map<std::string, int> usedNames;
@@ -50,7 +58,10 @@ Army ArmyGenerator::generate(int costLimit, std::mt19937& rng) const {
             name += " " + std::to_string(seen + 1);
         }
 
-        army.add(UnitFactory::create(spec, std::move(name)));
+        // Генератор покупает через ту же tryBuy, что и игрок руками
+        if (!tryBuy(army, spec, std::move(name), costLimit)) {
+            break;
+        }
         spent += spec.cost;
     }
     return army;

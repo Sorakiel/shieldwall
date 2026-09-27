@@ -241,6 +241,25 @@ void testGeneratorNames() {
     }
 }
 
+void testManualPurchaseRule() {
+    UnitCatalog catalog = UnitCatalog::loadFromFile("data/units.txt");
+    const UnitSpec& heavy = catalog.spec(UnitKind::Heavy);
+    const UnitSpec& light = catalog.spec(UnitKind::Light);
+
+    CHECK(ArmyGenerator::canAfford(0, 30, 30));
+    CHECK(!ArmyGenerator::canAfford(1, 30, 30));
+    CHECK(!ArmyGenerator::canAfford(0, 30, -5));
+
+    Army army;
+    CHECK(ArmyGenerator::tryBuy(army, heavy, "Гурм", 45));
+    CHECK(army.totalCost() == 30);
+    CHECK(!ArmyGenerator::tryBuy(army, heavy, "Брон", 45));   // 60 > 45
+    CHECK(army.size() == 1);                                   // отказ ничего не меняет
+    CHECK(ArmyGenerator::tryBuy(army, light, "Тиль", 45));
+    CHECK(ArmyGenerator::tryBuy(army, light, "Кай", 45) == false);
+    CHECK(army.totalCost() == 40);
+}
+
 }  // namespace
 
 int main() {
@@ -253,6 +272,7 @@ int main() {
     testGeneratorDeterminism();
     testGeneratorSharesOneRng();
     testGeneratorNames();
+    testManualPurchaseRule();
 
     std::cout << "проверок: " << checks << ", провалено: " << failures << "\n";
     return failures == 0 ? 0 : 1;
