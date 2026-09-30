@@ -25,41 +25,13 @@ void writeRecords(std::ostream& out, int index, const std::vector<UnitRecord>& r
     }
 }
 
-// Читает непустые строки подряд и помнит номер текущей, чтобы ошибка указывала место
-class LineReader {
-public:
-    explicit LineReader(std::istream& in) : in_(in) {}
-
-    std::vector<std::string> nextFields(const std::string& expected) {
-        std::string line;
-        while (std::getline(in_, line)) {
-            ++lineNo_;
-            line = dataformat::trim(line);
-            if (!line.empty() && line[0] != '#') {
-                return dataformat::split(line, ';');
-            }
-        }
+std::vector<std::string> nextFields(dataformat::LineReader& reader, const std::string& expected) {
+    std::string line;
+    if (!reader.next(line)) {
         throw DataError("файл закончился, а ожидалось: " + expected);
     }
-
-    bool hasMore() {
-        std::string line;
-        while (std::getline(in_, line)) {
-            ++lineNo_;
-            line = dataformat::trim(line);
-            if (!line.empty() && line[0] != '#') {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    int lineNo() const { return lineNo_; }
-
-private:
-    std::istream& in_;
-    int lineNo_ = 0;
-};
+    return dataformat::split(line, ';');
+}
 
 std::uint32_t parseSeed(const std::string& field) {
     std::size_t used = 0;
@@ -82,9 +54,9 @@ void expectFields(const std::vector<std::string>& fields, const std::string& key
     }
 }
 
-std::vector<UnitRecord> readArmy(LineReader& reader, int index) {
+std::vector<UnitRecord> readArmy(dataformat::LineReader& reader, int index) {
     std::string title = "army;" + std::to_string(index) + ";N";
-    std::vector<std::string> head = reader.nextFields(title);
+    std::vector<std::string> head = nextFields(reader, title);
     expectFields(head, "army", 3);
     if (dataformat::parseInt(head[1], "номер армии") != index) {
         throw DataError("армии должны идти по порядку, ожидалась «" + title + "»");
@@ -96,7 +68,7 @@ std::vector<UnitRecord> readArmy(LineReader& reader, int index) {
 
     std::vector<UnitRecord> records;
     for (int i = 0; i < count; ++i) {
-        std::vector<std::string> fields = reader.nextFields("юнит " + std::to_string(i + 1) +
+        std::vector<std::string> fields = nextFields(reader, "юнит " + std::to_string(i + 1) +
                                                             " из " + std::to_string(count));
         if (fields.size() != 8) {
             throw DataError("у юнита должно быть 8 полей, найдено " +
@@ -162,10 +134,10 @@ void SaveService::saveToFile(const SaveData& data, const std::string& path) {
 }
 
 SaveData SaveService::read(std::istream& in, const std::string& source) {
-    LineReader reader(in);
+    dataformat::LineReader reader(in);
     SaveData data;
     try {
-        std::vector<std::string> head = reader.nextFields(std::string(Header) + ";N");
+        std::vector<std::string> head = nextFields(reader, std::string(Header) + ";N");
         if (head[0] != Header || head.size() != 2) {
             throw DataError(std::string("это не сохранение, первой должна идти строка «") +
                             Header + ";N»");
@@ -176,11 +148,11 @@ SaveData SaveService::read(std::istream& in, const std::string& source) {
                             " не поддерживается, нужна " + std::to_string(SupportedVersion));
         }
 
-        std::vector<std::string> seed = reader.nextFields("seed;N");
+        std::vector<std::string> seed = nextFields(reader, "seed;N");
         expectFields(seed, "seed", 2);
         data.seed = parseSeed(seed[1]);
 
-        std::vector<std::string> turn = reader.nextFields("turn;N");
+        std::vector<std::string> turn = nextFields(reader, "turn;N");
         expectFields(turn, "turn", 2);
         data.turn = dataformat::parseInt(turn[1], "номер хода");
         if (data.turn < 0) {
@@ -189,7 +161,8 @@ SaveData SaveService::read(std::istream& in, const std::string& source) {
 
         data.armyA = readArmy(reader, 0);
         data.armyB = readArmy(reader, 1);
-        if (reader.hasMore()) {
+        std::string extra;
+        if (reader.next(extra)) {
             throw DataError("после второй армии есть лишние строки");
         }
     } catch (const DataError& e) {

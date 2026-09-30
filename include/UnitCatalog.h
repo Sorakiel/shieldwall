@@ -28,6 +28,22 @@ struct UnitSpec {
 // чтобы правила чтения чисел и типов не жили в двух копиях.
 namespace dataformat {
 
+// Читает файл построчно, пропуская пустые строки и комментарии (#). Один читатель
+// на каталог и на сохранения, чтобы правила "что считать строкой" не жили в двух копиях.
+class LineReader {
+public:
+    explicit LineReader(std::istream& in) : in_(in) {}
+
+    // Следующая содержательная строка, уже без пробелов по краям; false в конце файла
+    bool next(std::string& line);
+    // Номер последней прочитанной строки - для текста ошибок
+    int lineNo() const { return lineNo_; }
+
+private:
+    std::istream& in_;
+    int lineNo_ = 0;
+};
+
 std::string trim(const std::string& s);
 std::vector<std::string> split(const std::string& line, char separator);
 int parseInt(const std::string& field, const std::string& what);

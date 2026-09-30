@@ -29,6 +29,18 @@ std::vector<std::string> split(const std::string& line, char separator) {
     }
 }
 
+bool LineReader::next(std::string& line) {
+    std::string raw;
+    while (std::getline(in_, raw)) {
+        ++lineNo_;
+        line = trim(raw);
+        if (!line.empty() && line[0] != '#') {
+            return true;
+        }
+    }
+    return false;
+}
+
 int parseInt(const std::string& field, const std::string& what) {
     std::size_t used = 0;
     int value = 0;
@@ -110,18 +122,13 @@ UnitCatalog UnitCatalog::loadFromFile(const std::string& path) {
 UnitCatalog UnitCatalog::loadFromStream(std::istream& in, const std::string& source) {
     UnitCatalog catalog;
     bool versionSeen = false;
-    std::string line;
-    int lineNo = 0;
+    dataformat::LineReader reader(in);
+    std::string text;
 
-    while (std::getline(in, line)) {
-        ++lineNo;
-        std::string text = dataformat::trim(line);
-        if (text.empty() || text[0] == '#') {
-            continue;
-        }
-
+    while (reader.next(text)) {
         auto fail = [&](const std::string& message) {
-            return DataError(source + ", строка " + std::to_string(lineNo) + ": " + message);
+            return DataError(source + ", строка " + std::to_string(reader.lineNo()) + ": " +
+                             message);
         };
 
         try {
