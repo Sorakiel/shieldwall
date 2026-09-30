@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include "ArmyGenerator.h"
+#include "BattleReplay.h"
 #include "SaveService.h"
 #include "UnitCatalog.h"
 #include "UnitFactory.h"
@@ -383,7 +384,7 @@ void testReplayMatchesOriginalBattle() {
         SaveData data = makeSave(battleSeed + 100, battleSeed, 0, 120);
 
         // Оригинальный бой идёт в одной сессии, а с каждого хода проверяем восстановление
-        BattleSession original = SaveService::replay(data);
+        BattleSession original = BattleReplay::replay(data);
         int turn = 0;
         while (!original.engine->finished() && turn < 200) {
             original.engine->nextTurn();
@@ -394,7 +395,7 @@ void testReplayMatchesOriginalBattle() {
             std::ostringstream text;
             SaveService::write(saved, text);
             std::istringstream in(text.str());
-            BattleSession restored = SaveService::replay(SaveService::read(in, "save.txt"));
+            BattleSession restored = BattleReplay::replay(SaveService::read(in, "save.txt"));
 
             CHECK(restored.turn == turn);
             CHECK(picture(*restored.armyA, *restored.armyB) ==
@@ -407,7 +408,7 @@ void testReplayMatchesOriginalBattle() {
 void testReplayPastEnd() {
     SaveData data = makeSave(1, 1, 5000, 30);
     try {
-        SaveService::replay(data);
+        BattleReplay::replay(data);
         CHECK(false);
     } catch (const DataError& e) {
         CHECK(contains(e.what(), "сохранение повреждено"));

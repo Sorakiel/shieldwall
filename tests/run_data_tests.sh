@@ -6,7 +6,7 @@ set -e
 
 out=$(mktemp -d)/data_tests
 files="tests/DataTests.cpp src/UnitCatalog.cpp"
-for f in src/UnitFactory.cpp src/ArmyGenerator.cpp src/SaveService.cpp; do
+for f in src/UnitFactory.cpp src/ArmyGenerator.cpp src/SaveService.cpp src/BattleReplay.cpp; do
     [ -f "$f" ] && files="$files $f"
 done
 

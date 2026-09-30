@@ -15,6 +15,7 @@ add_executable(shieldwall
     src/UnitFactory.cpp
     src/ArmyGenerator.cpp
     src/SaveService.cpp
+    src/BattleReplay.cpp
 )
 
 target_include_directories(battle PRIVATE include)
