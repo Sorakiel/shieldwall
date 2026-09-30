@@ -55,18 +55,37 @@ int parseInt(const std::string& field, const std::string& what) {
     return value;
 }
 
+namespace {
+
+// Единственное место, где тип связан со строкой из файла. Новый тип - новая строка здесь.
+struct KindToken {
+    UnitKind kind;
+    const char* token;
+};
+const KindToken KindTokens[] = {
+    {UnitKind::Light, "light"},
+    {UnitKind::Heavy, "heavy"},
+    {UnitKind::Archer, "archer"},
+};
+
+}  // namespace
+
 UnitKind parseKind(const std::string& token) {
-    if (token == "light") return UnitKind::Light;
-    if (token == "heavy") return UnitKind::Heavy;
-    if (token == "archer") return UnitKind::Archer;
-    throw DataError("неизвестный тип юнита «" + token + "», допустимы light, heavy, archer");
+    std::string known;
+    for (const KindToken& entry : KindTokens) {
+        if (token == entry.token) {
+            return entry.kind;
+        }
+        known += std::string(known.empty() ? "" : ", ") + entry.token;
+    }
+    throw DataError("неизвестный тип юнита «" + token + "», допустимы " + known);
 }
 
 const char* kindToken(UnitKind kind) {
-    switch (kind) {
-        case UnitKind::Light: return "light";
-        case UnitKind::Heavy: return "heavy";
-        case UnitKind::Archer: return "archer";
+    for (const KindToken& entry : KindTokens) {
+        if (entry.kind == kind) {
+            return entry.token;
+        }
     }
     throw DataError("неизвестный тип юнита");
 }
