@@ -9,7 +9,4 @@
 class UnitFactory {
 public:
     static std::unique_ptr<Unit> create(const UnitSpec& spec, std::string name);
-    // Для разбора строковых типов из файлов: "light" -> LightUnit и т.д.
-    static std::unique_ptr<Unit> create(const std::string& kindToken, const UnitSpec& stats,
-                                        std::string name);
 };

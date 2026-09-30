@@ -14,11 +14,3 @@ std::unique_ptr<Unit> UnitFactory::create(const UnitSpec& spec, std::string name
     }
     throw DataError("фабрика не знает такого типа юнита");
 }
-
-std::unique_ptr<Unit> UnitFactory::create(const std::string& kindToken, const UnitSpec& stats,
-                                          std::string name) {
-    UnitSpec spec = stats;
-    spec.kind = dataformat::parseKind(kindToken);
-    dataformat::validateSpec(spec);
-    return create(spec, std::move(name));
-}

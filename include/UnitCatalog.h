@@ -51,8 +51,6 @@ public:
     static UnitCatalog loadFromStream(std::istream& in, const std::string& source);
 
     const std::vector<UnitSpec>& specs() const { return specs_; }
-    const UnitSpec& spec(UnitKind kind) const;   // DataError, если типа нет в файле
-    int minCost() const;                         // самая дешёвая запись, 0 для пустого каталога
 
 private:
     std::vector<UnitSpec> specs_;

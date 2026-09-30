@@ -115,9 +115,6 @@ UnitCatalog UnitCatalog::loadFromStream(std::istream& in, const std::string& sou
 
     while (std::getline(in, line)) {
         ++lineNo;
-        if (lineNo == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
-            line.erase(0, 3);   // BOM, который любит добавлять блокнот Windows
-        }
         std::string text = dataformat::trim(line);
         if (text.empty() || text[0] == '#') {
             continue;
@@ -162,23 +159,4 @@ UnitCatalog UnitCatalog::loadFromStream(std::istream& in, const std::string& sou
         throw DataError(source + ": не описан ни один тип юнита");
     }
     return catalog;
-}
-
-const UnitSpec& UnitCatalog::spec(UnitKind kind) const {
-    for (const UnitSpec& s : specs_) {
-        if (s.kind == kind) {
-            return s;
-        }
-    }
-    throw DataError(std::string("в каталоге нет типа «") + dataformat::kindToken(kind) + "»");
-}
-
-int UnitCatalog::minCost() const {
-    int best = 0;
-    for (const UnitSpec& s : specs_) {
-        if (best == 0 || s.cost < best) {
-            best = s.cost;
-        }
-    }
-    return best;
 }

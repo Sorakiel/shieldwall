@@ -1,5 +1,4 @@
 #include "SaveService.h"
-#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include "UnitFactory.h"
@@ -35,9 +34,6 @@ public:
         std::string line;
         while (std::getline(in_, line)) {
             ++lineNo_;
-            if (lineNo_ == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
-                line.erase(0, 3);
-            }
             line = dataformat::trim(line);
             if (!line.empty() && line[0] != '#') {
                 return dataformat::split(line, ';');
@@ -155,10 +151,6 @@ void SaveService::saveToFile(const SaveData& data, const std::string& path) {
     std::ostringstream text;
     write(data, text);
 
-    std::filesystem::path target(path);
-    if (target.has_parent_path()) {
-        std::filesystem::create_directories(target.parent_path());
-    }
     std::ofstream out(path, std::ios::trunc);
     if (!out) {
         throw DataError("не удалось открыть файл сохранения «" + path + "» для записи");

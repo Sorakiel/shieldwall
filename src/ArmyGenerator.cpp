@@ -1,5 +1,4 @@
 #include "ArmyGenerator.h"
-#include <map>
 #include <string>
 #include <vector>
 #include "UnitFactory.h"
@@ -35,7 +34,6 @@ bool ArmyGenerator::tryBuy(Army& army, const UnitSpec& spec, std::string name, i
 
 Army ArmyGenerator::generate(int costLimit, std::mt19937& rng) const {
     Army army;
-    std::map<std::string, int> usedNames;
     int spent = 0;
 
     while (true) {
@@ -51,12 +49,7 @@ Army ArmyGenerator::generate(int costLimit, std::mt19937& rng) const {
 
         const UnitSpec& spec = *affordable[pickIndex(rng, affordable.size())];
 
-        // Одинаковые имена в одном строю путают лог, поэтому повторам добавляется номер
         std::string name = NamePool[pickIndex(rng, NamePoolSize)];
-        int seen = usedNames[name]++;
-        if (seen > 0) {
-            name += " " + std::to_string(seen + 1);
-        }
 
         // Генератор покупает через ту же tryBuy, что и игрок руками
         if (!tryBuy(army, spec, std::move(name), costLimit)) {
