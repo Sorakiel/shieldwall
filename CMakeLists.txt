@@ -18,4 +18,4 @@ add_executable(shieldwall
     src/BattleReplay.cpp
 )
 
-target_include_directories(battle PRIVATE include)
+target_include_directories(shieldwall PRIVATE include)
