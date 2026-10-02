@@ -1,0 +1,29 @@
+name: Mirror to GitVerse
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-gitverse
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # нужна полная история и все ветки
+
+      - name: Push в GitVerse
+        env:
+          GV_USER: ${{ secrets.GITVERSE_USER }}
+          GV_TOKEN: ${{ secrets.GITVERSE_TOKEN }}
+          GV_REPO: Battle_project
+        run: |
+          git remote add gitverse "https://${GV_USER}:${GV_TOKEN}@gitverse.ru/${GV_USER}/${GV_REPO}.git"
+          git push --force gitverse "+refs/remotes/origin/*:refs/heads/*"
+          git push --force gitverse --tags
