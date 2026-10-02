@@ -21,16 +21,17 @@ add_executable(shieldwall
     src/ArmyGenerator.cpp
     src/SaveService.cpp
     src/BattleReplay.cpp
-    # Временные заглушки ядра, чтобы main собирался, пока Unit.cpp, Army.cpp и
-    # BattleEngine.cpp пустые. Когда ядро влито, эти три строки удалить.
-    tests/stubs/UnitStub.cpp
-    tests/stubs/ArmyStub.cpp
-    tests/stubs/EngineStub.cpp
+
+
     src/EventFormatter.cpp
     src/ConsoleUI.cpp
     src/Menu.cpp
     src/BattleRunner.cpp
+
     src/ArmyBuilder.cpp
+
+    src/TargetSelector.cpp
+
 )
 
 target_include_directories(shieldwall PRIVATE include)
