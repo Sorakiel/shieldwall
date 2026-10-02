@@ -27,6 +27,10 @@ std::optional<std::uint32_t> ConsoleUI::readNumber(const std::string& prompt,
     return view_->readNumber(prompt, min, max);
 }
 
+std::optional<std::string> ConsoleUI::readText(const std::string& prompt, std::size_t maxBytes) {
+    return view_->readText(prompt, maxBytes);
+}
+
 void ConsoleUI::message(const std::string& text) { view_->message(text); }
 
 void ConsoleUI::showArmies(Army& a, Army& b) {

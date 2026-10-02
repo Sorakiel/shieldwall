@@ -23,6 +23,8 @@ public:
     void showRecruitment(const RecruitmentSnapshot& snapshot) override;
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override;
 
+    std::optional<std::string> readText(const std::string& prompt,
+        std::size_t maxBytes) override;
     std::optional<std::uint32_t> readNumber(const std::string& prompt, std::uint32_t min,
                                           std::uint32_t max) override;
     void message(const std::string& text) override;

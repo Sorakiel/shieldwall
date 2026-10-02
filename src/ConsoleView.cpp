@@ -1,5 +1,47 @@
 #include "ConsoleView.h"
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <iostream>
+#include <thread>
+#ifdef _WIN32
+#include <conio.h>
+#include <io.h>
+#else
+#include <sys/select.h>
+#include <unistd.h>
+#endif
+
+namespace {
+bool interactiveInput(std::istream& input) {
+#ifdef _WIN32
+    return &input == &std::cin && _isatty(_fileno(stdin)) != 0;
+#else
+    return &input == &std::cin && isatty(STDIN_FILENO);
+#endif
+}
+bool inputReady() {
+#ifdef _WIN32
+    return _kbhit() != 0;
+#else
+    fd_set descriptors;
+    FD_ZERO(&descriptors);
+    FD_SET(STDIN_FILENO, &descriptors);
+    timeval timeout{};
+    return select(STDIN_FILENO + 1, &descriptors, nullptr, nullptr, &timeout) > 0;
+#endif
+}
+}  // namespace
+
+std::optional<std::string> ConsoleView::readText(const std::string& prompt, std::size_t maxBytes) {
+    std::string line;
+    while (true) {
+        out_ << prompt << std::flush;
+        if (!std::getline(in_, line)) return std::nullopt;
+        if (line.size() <= maxBytes) return line;
+        message("Имя слишком длинное: максимум " + std::to_string(maxBytes) + " байт UTF-8.");
+    }
+}
 
 std::optional<std::uint32_t> ConsoleView::readNumber(const std::string& prompt,
                                                    std::uint32_t min, std::uint32_t max) {
@@ -48,13 +90,24 @@ void ConsoleView::showArmies(const BattleSnapshot& snapshot) {
 }
 
 TurnAction ConsoleView::waitForTurn(BattleMode mode) {
-    if (mode == BattleMode::Automatic) return TurnAction::Next;
+    // Автобой в перенаправленном вводе не съедает команды следующего меню.
+    if (mode == BattleMode::Automatic && !interactiveInput(in_)) return TurnAction::Next;
+    if (mode == BattleMode::Automatic) {
+        message("Автобой: s + Enter — сохранить; m + Enter — по ходам; 0 + Enter — меню.");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(550);
+        while (!inputReady()) {
+            if (std::chrono::steady_clock::now() >= deadline) return TurnAction::Next;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
     while (true) {
-        message("Enter — следующий ход; a — автобой; 0 — сохранить и вернуться в меню.");
+        message("Enter — следующий ход; a — автобой; s — сохранить; 0 — в главное меню.");
         std::string command;
         if (!std::getline(in_, command) || command == "0") return TurnAction::Exit;
         if (command.empty()) return TurnAction::Next;
         if (command == "a" || command == "A") return TurnAction::Automatic;
+        if (command == "m" || command == "M") return TurnAction::Manual;
+        if (command == "s" || command == "S") return TurnAction::Save;
         message("Неизвестная команда.");
     }
 }

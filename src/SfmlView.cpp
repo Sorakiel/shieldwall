@@ -1,4 +1,5 @@
 #include "SfmlView.h"
+#include "TextInput.h"
 #include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <deque>
@@ -14,6 +15,8 @@ constexpr std::size_t visibleUnits = 5;
 constexpr int nextAction = 100;
 constexpr int autoAction = 101;
 constexpr int submitAction = 102;
+constexpr int saveAction = 103;
+constexpr int cancelAction = 104;
 
 const sf::Color background(14, 20, 30);
 const sf::Color panel(23, 32, 45);
@@ -63,6 +66,8 @@ struct SfmlView::Impl {
     int winner = -1;
     bool automatic = false;
     bool enteringNumber = false;
+    bool enteringText = false;
+    TextInput textInput;
     bool selectAll = true;
     bool waitingForTurn = false;
     std::string prompt;
@@ -280,6 +285,39 @@ struct SfmlView::Impl {
                  "Просмотр истории · прокрутка колесом"), 904.f, 753.f, 12, muted);
     }
 
+    bool saveList() const {
+        return std::any_of(choices.begin(), choices.end(), [](const MenuChoice& choice) {
+            return choice.label.find('\n') != std::string::npos;
+        });
+    }
+
+    void drawSaveList() {
+        buttons.clear();
+        rectangle(24.f, 116.f, 832.f, 584.f, panel);
+        text(utf8("Сохранения"), 48.f, 134.f, 26, accent);
+        std::size_t row = 0, navigation = 0;
+        for (const auto& choice : choices) {
+            const auto split = choice.label.find('\n');
+            if (split == std::string::npos) {
+                button(choice.label, 24.f + static_cast<float>(navigation++) * 278.f,
+                       708.f, 266.f, static_cast<int>(choice.value), choice.enabled);
+                continue;
+            }
+            const float y = 182.f + static_cast<float>(row++) * 76.f;
+            const sf::FloatRect bounds({44.f, y}, {790.f, 66.f});
+            const auto mouse = window.mapPixelToCoords(sf::Mouse::getPosition(window), camera);
+            const bool hovered = choice.enabled && bounds.contains(mouse);
+            rectangle(44.f, y, 790.f, 66.f, raised, hovered ? accent : sf::Color(53, 70, 91));
+            text(elide(utf8(choice.label.substr(0, split)), 754.f, 19),
+                 60.f, y + 6.f, 19, choice.enabled ? foreground : muted);
+            text(elide(utf8(choice.label.substr(split + 1)), 754.f, 14),
+                 60.f, y + 37.f, 14, choice.enabled ? muted : red);
+            buttons.push_back({bounds, static_cast<int>(choice.value), choice.enabled});
+        }
+        text(utf8("Esc — отмена. Причины повреждения также показаны в журнале."),
+             26.f, 770.f, 13, muted);
+    }
+
     void draw() {
         if (!window.isOpen()) throw ViewClosed{};
         window.clear(background);
@@ -321,12 +359,15 @@ struct SfmlView::Impl {
         }
         drawLog();
 
-        if (waitingForTurn && !enteringNumber) {
-            button("Следующий ход", 24.f, 708.f, 220.f, nextAction, true, true);
+        if (saveList() && !enteringText && !enteringNumber) {
+            drawSaveList();
+        } else if (waitingForTurn && !enteringNumber && !enteringText) {
+            button("Следующий ход", 24.f, 708.f, 196.f, nextAction, true, true);
             button(automatic ? "Автобой: вкл." : "Автобой: выкл.",
-                   260.f, 708.f, 210.f, autoAction);
-            button("В главное меню", 486.f, 708.f, 210.f, 0);
-            text(utf8("Enter / пробел — ход · A — переключить режим"), 26.f, 770.f, 13, muted);
+                   232.f, 708.f, 184.f, autoAction);
+            button("Сохранить", 428.f, 708.f, 172.f, saveAction);
+            button("В главное меню", 612.f, 708.f, 244.f, 0);
+            text(utf8("Enter / пробел — ход · A — режим · S — сохранить"), 26.f, 770.f, 13, muted);
         } else {
             for (std::size_t index = 0; index < choices.size(); ++index) {
                 const auto& choice = choices[index];
@@ -335,26 +376,33 @@ struct SfmlView::Impl {
                        static_cast<int>(choice.value), choice.enabled, index == 0, 38.f);
             }
         }
-        if (!result.empty()) {
+        if (!saveList() && !result.empty()) {
             text(elide(utf8(result), 798.f, 19), 28.f, 674.f, 19,
                  winner == 0 ? blue : winner == 1 ? red : foreground);
-        } else {
+        } else if (!saveList()) {
             text(utf8("Полоска показывает текущее HP / максимальное HP."), 28.f, 676.f, 13, muted);
         }
 
-        if (enteringNumber) {
+        if (enteringNumber || enteringText) {
             buttons.clear();
             rectangle(24.f, 116.f, 832.f, 680.f, sf::Color(14, 20, 30, 220));
             rectangle(116.f, 232.f, 648.f, 312.f, raised);
-            text(utf8(prompt), 144.f, 258.f, 23);
+            text(elide(utf8(prompt), 590.f, 23), 144.f, 258.f, 23);
             rectangle(144.f, 317.f, 590.f, 62.f, background, accent);
-            if (selectAll) rectangle(158.f, 329.f, std::max(15.f, textWidth(utf8(input), 28) + 8.f),
+            const unsigned size = enteringText ? 22u : 28u;
+            sf::String value = utf8(enteringText ? textInput.value() : input);
+            while (!value.isEmpty() && textWidth(value, size) > 545.f) value.erase(0);
+            if (selectAll) rectangle(158.f, 329.f, std::max(15.f, textWidth(value, size) + 8.f),
                                      38.f, sf::Color(53, 80, 108));
-            text(utf8(input + (selectAll ? "" : "|")), 162.f, 328.f, 28);
-            text(utf8(error.empty() ? "Введите число и нажмите Enter" : error), 144.f, 397.f, 14,
+            text(value + (selectAll ? sf::String{} : sf::String("|")), 162.f, 328.f, size);
+            const auto hint = enteringText ? "Enter — сохранить · Esc — отмена · максимум 64 байта UTF-8" :
+                                            "Введите число и нажмите Enter";
+            text(utf8(error.empty() ? hint : error), 144.f, 397.f, 14,
                  error.empty() ? muted : red);
-            button("Продолжить", 144.f, 455.f, 210.f, submitAction, true, true);
-            button("Выход", 374.f, 455.f, 150.f, 0);
+            button(enteringText ? "Сохранить" : "Продолжить",
+                   144.f, 455.f, 210.f, submitAction, true, true);
+            button(enteringText ? "Отмена" : "Выход",
+                   374.f, 455.f, 150.f, enteringText ? cancelAction : 0);
         }
         window.display();
     }
@@ -369,6 +417,12 @@ struct SfmlView::Impl {
                 updateViewport(resized->size);
             }
             if (const auto* entered = event->getIf<sf::Event::TextEntered>()) {
+                if (enteringText && entered->unicode >= 0x20) {
+                    if (selectAll) textInput.clear();
+                    selectAll = false;
+                    if (!textInput.append(entered->unicode)) error = "Не удалось добавить символ: проверьте длину имени.";
+                    else error.clear();
+                }
                 if (enteringNumber && entered->unicode >= U'0' && entered->unicode <= U'9') {
                     if (selectAll) input.clear();
                     selectAll = false;
@@ -378,17 +432,28 @@ struct SfmlView::Impl {
             }
             if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
                 if (key->code == sf::Keyboard::Key::Escape) {
+                    if (enteringText) return cancelAction;
+                    if (!enteringNumber && std::any_of(choices.begin(), choices.end(),
+                        [](const MenuChoice& choice) {
+                            return choice.value == 0 && choice.enabled && choice.escapeCancel;
+                        })) return 0;
                     window.close();
                     throw ViewClosed{};
                 }
                 if (handoffTeam >= 0 && key->code == sf::Keyboard::Key::Enter) {
                     return submitAction;
                 }
-                if (enteringNumber) {
+                if (enteringNumber || enteringText) {
                     if (key->control && key->code == sf::Keyboard::Key::A) selectAll = true;
                     if (key->code == sf::Keyboard::Key::Backspace) {
-                        if (selectAll) input.clear();
-                        else if (!input.empty()) input.pop_back();
+                        if (enteringText) {
+                            if (selectAll) textInput.clear();
+                            else textInput.backspace();
+                        } else {
+                            if (selectAll) input.clear();
+                            else if (!input.empty()) input.pop_back();
+                        }
+                        error.clear();
                         selectAll = false;
                     }
                     if (key->code == sf::Keyboard::Key::Enter) return submitAction;
@@ -400,13 +465,18 @@ struct SfmlView::Impl {
                         key->code == sf::Keyboard::Key::A) return autoAction;
                 }
             }
+            // KeyReleased не оставляет TextEntered('s') в очереди нового поля.
+            if (const auto* key = event->getIf<sf::Event::KeyReleased>()) {
+                if (waitingForTurn && !enteringNumber && !enteringText &&
+                    key->code == sf::Keyboard::Key::S) return saveAction;
+            }
             if (const auto* wheel = event->getIf<sf::Event::MouseWheelScrolled>()) {
-                if (enteringNumber || handoffTeam >= 0) continue;
+                if (enteringNumber || enteringText || handoffTeam >= 0) continue;
                 const auto position = window.mapPixelToCoords(wheel->position, camera);
                 if (position.x >= 880.f) {
                     logOffset += wheel->delta > 0 ? 3 : -3;
                     clampLogOffset();
-                } else if (position.y >= 116.f && position.y < 668.f) {
+                } else if (!saveList() && position.y >= 116.f && position.y < 668.f) {
                     shiftUnits(position.y < 368.f ? 0 : 1, wheel->delta > 0 ? -1 : 1);
                 }
             }
@@ -439,6 +509,7 @@ struct SfmlView::Impl {
             if (const auto action = pollAction()) {
                 if (*action == nextAction) break;
                 if (*action == 0) { outcome = TurnAction::Exit; break; }
+                if (*action == saveAction) { outcome = TurnAction::Save; break; }
                 if (*action == autoAction) {
                     outcome = automatic ? TurnAction::Manual : TurnAction::Automatic;
                     break;
@@ -496,17 +567,35 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
     }
 }
 
+std::optional<std::string> SfmlView::readText(const std::string& prompt, std::size_t maxBytes) {
+    impl_->enteringText = true;
+    impl_->prompt = prompt;
+    impl_->textInput.reset(maxBytes);
+    impl_->selectAll = false;
+    impl_->error.clear();
+    while (true) {
+        impl_->draw();
+        const auto action = impl_->pollAction();
+        if (!action) continue;
+        if (*action == cancelAction || *action == submitAction) {
+            impl_->enteringText = false;
+            if (*action == cancelAction) return std::nullopt;
+            return impl_->textInput.value();
+        }
+    }
+}
+
 std::optional<std::uint32_t> SfmlView::choose(const std::vector<MenuChoice>& choices) {
     impl_->choices = choices;
     if (choices.empty()) return std::nullopt;
     while (true) {
         impl_->draw();
         if (const auto action = impl_->pollAction()) {
-            if (impl_->handleNavigation(*action)) continue;
             if (*action >= 0 && impl_->hasChoice(static_cast<std::uint32_t>(*action))) {
                 impl_->choices.clear();
                 return static_cast<std::uint32_t>(*action);
             }
+            impl_->handleNavigation(*action);
         }
     }
 }

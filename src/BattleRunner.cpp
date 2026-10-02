@@ -2,7 +2,8 @@
 #include <string>
 
 RunResult BattleRunner::run(BattleEngine& engine, Army& a, Army& b, std::mt19937& logRng,
-                            BattleMode mode, int turn, const std::function<void(int)>& onTurn) {
+                            BattleMode mode, int turn, const std::function<void(int)>& onTurn,
+                            const std::function<void(int)>& onSave) {
     ui_.setBattleProgress(turn, mode);
     ui_.showArmies(a, b);
     while (!engine.finished()) {
@@ -11,6 +12,10 @@ RunResult BattleRunner::run(BattleEngine& engine, Army& a, Army& b, std::mt19937
         if (action == TurnAction::Automatic || action == TurnAction::Manual) {
             mode = action == TurnAction::Automatic ? BattleMode::Automatic : BattleMode::Manual;
             ui_.setBattleProgress(turn, mode);
+            continue;
+        }
+        if (action == TurnAction::Save) {
+            if (onSave) onSave(turn);
             continue;
         }
         const auto events = engine.nextTurn();
