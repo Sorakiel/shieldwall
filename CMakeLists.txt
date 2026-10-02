@@ -30,6 +30,7 @@ add_executable(shieldwall
     src/ConsoleUI.cpp
     src/Menu.cpp
     src/BattleRunner.cpp
+    src/ArmyBuilder.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)
