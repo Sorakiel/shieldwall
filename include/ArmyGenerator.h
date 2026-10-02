@@ -21,6 +21,9 @@ public:
     // Возвращает false и ничего не меняет, если не помещается.
     static bool tryBuy(Army& army, const UnitSpec& spec, std::string name, int costLimit);
 
+    // Случайное имя из встроенного списка. Нужно и генератору, и ручной закупке.
+    static std::string randomName(std::mt19937& rng);
+
 private:
     UnitCatalog catalog_;
 };
