@@ -4,6 +4,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include "ArmyBuilder.h"
 #include "ArmyGenerator.h"
 #include "BattleReplay.h"
 #include "SaveService.h"
@@ -127,6 +128,40 @@ void testManualPurchaseUsesSameRule() {
     CHECK(!ArmyGenerator::canAfford(1, 30, 30));
 }
 
+void testArmyBuilder() {
+    std::mt19937 rng(5);
+    ArmyBuilder builder(loadDefault(), 60);
+    CHECK(builder.buy(UnitKind::Heavy, rng) == BuildResult::Ok);     // 30
+    CHECK(builder.buy(UnitKind::Archer, rng) == BuildResult::Ok);    // 18, всего 48
+    CHECK(builder.spent() == 48 && builder.remaining() == 12);
+    CHECK(builder.canBuy(UnitKind::Light) && !builder.canBuy(UnitKind::Heavy));
+
+    // Отказ ничего не меняет, а границу лимита проверяет то же canAfford
+    CHECK(builder.buy(UnitKind::Heavy, rng) == BuildResult::NotEnoughBudget);
+    CHECK(builder.units().size() == 2 && builder.spent() == 48);
+    CHECK(builder.buy(UnitKind::Light, rng) == BuildResult::Ok);     // 58
+    CHECK(builder.buy(UnitKind::Light, rng) == BuildResult::NotEnoughBudget);
+
+    // Порядок в строю: лучника в начало, потом убрать тяжёлого, деньги возвращаются
+    CHECK(builder.move(1, 0) == BuildResult::Ok);
+    CHECK(builder.units()[0].spec.kind == UnitKind::Archer);
+    CHECK(builder.units()[1].spec.kind == UnitKind::Heavy);
+    CHECK(builder.remove(1) == BuildResult::Ok);
+    CHECK(builder.spent() == 28 && builder.canBuy(UnitKind::Heavy));
+    CHECK(builder.remove(5) == BuildResult::BadPosition);
+    CHECK(builder.move(0, 5) == BuildResult::BadPosition);
+
+    // Готовая армия повторяет состав и цену
+    Army army = builder.build();
+    CHECK(army.size() == 2 && army.totalCost() == builder.spent());
+    CHECK(army.at(0)->kind() == UnitKind::Archer && army.at(1)->kind() == UnitKind::Light);
+    CHECK(army.at(0)->name() == builder.units()[0].name);
+
+    std::istringstream onlyLight("version;1\nlight;20;7;0;0;1;10\n");
+    ArmyBuilder light(UnitCatalog::loadFromStream(onlyLight, "test.txt"), 100);
+    CHECK(light.buy(UnitKind::Archer, rng) == BuildResult::UnknownKind);
+}
+
 SaveData makeSave(std::uint32_t battleSeed, int turn) {
     ArmyGenerator generator(loadDefault());
     std::mt19937 rng(battleSeed + 100);
@@ -205,6 +240,7 @@ int main() {
     testGeneratorStaysWithinLimit();
     testGeneratorIsDeterministic();
     testManualPurchaseUsesSameRule();
+    testArmyBuilder();
     testSaveRoundTrip();
     testBrokenSave();
     testReplayRestoresSamePicture();
