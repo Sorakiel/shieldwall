@@ -25,7 +25,7 @@ endforeach()
 add_library(test_support STATIC ${CoreSources}
     "${Root}/src/UnitCatalog.cpp" "${Root}/src/UnitFactory.cpp"
     "${Root}/src/ArmyGenerator.cpp" "${Root}/src/SaveService.cpp"
-    "${Root}/src/BattleReplay.cpp")
+    "${Root}/src/BattleReplay.cpp" "${Root}/src/ArmyBuilder.cpp")
 target_include_directories(test_support PUBLIC "${Root}/include")
 
 add_executable(ui_tests UiTests.cpp
