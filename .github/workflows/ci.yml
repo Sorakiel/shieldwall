@@ -15,6 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Системные зависимости окна SFML на Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxrandr-dev libxcursor-dev libxi-dev libudev-dev libgl1-mesa-dev
+
       - name: Сборка приложения
         run: |
           cmake -B build

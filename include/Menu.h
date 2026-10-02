@@ -1,15 +1,19 @@
 #pragma once
-#include "ConsoleUI.h"
+#include <string>
+#include <utility>
+#include "UserInterface.h"
 #include "UnitCatalog.h"
 
 class Menu {
 public:
-    Menu(ConsoleUI& ui, const UnitCatalog& catalog) : ui_(ui), catalog_(catalog) {}
+    Menu(UserInterface& ui, const UnitCatalog& catalog,
+         std::string autosavePath = "saves/autosave.txt")
+        : ui_(ui), catalog_(catalog), autosavePath_(std::move(autosavePath)) {}
     void run();
 
 private:
-    enum class State { Setup, Recruitment, Battle, Result, Exit };
-
-    ConsoleUI& ui_;
+    enum class State { Welcome, Setup, Recruitment, Ready, Load, Battle, Result, Exit };
+    UserInterface& ui_;
     const UnitCatalog& catalog_;
+    std::string autosavePath_;
 };

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <deque>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -7,6 +8,7 @@
 #include "BattleRunner.h"
 #include "EventFormatter.h"
 #include "Menu.h"
+#include "ConsoleUI.h"
 
 namespace {
 
@@ -86,28 +88,28 @@ std::string menuOutput(const std::string& input, const UnitCatalog& catalog) {
     std::istringstream in(input);
     std::ostringstream out;
     ConsoleUI ui(in, out);
-    Menu(ui, catalog).run();
+    Menu(ui, catalog, "build/ui-menu-tests/autosave.txt").run();
     return out.str();
 }
 
 void testMenu() {
     const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
-    const std::string script = "9\n40\n42\n5\n1\n0\n";
+    const std::string script = "1\n9\n40\n42\n1\n1\n1\n1\n5\n1\n0\n";
     const std::string first = menuOutput(script, catalog);
     CHECK(first == menuOutput(script, catalog));
     CHECK(contains(first, "Введите целое число от 10"));
-    CHECK(contains(first, "Введите целое число от 0 до 3"));
+    CHECK(contains(first, "Введите целое число от 0 до 4"));
     CHECK(contains(first, "Уборка завершена"));
     CHECK(contains(first, "Итог: победили"));
     CHECK(contains(first, "Новая партия"));
 
     // Ни отмена, ни конец ввода не должны запускать бой.
-    for (const std::string scriptBeforeBattle : {"", "10\n", "10\n42\n", "10\n42\n0\n"}) {
+    for (const std::string scriptBeforeBattle : {"", "1\n10\n", "1\n10\n42\n1\n1\n", "1\n10\n42\n1\n1\n1\n1\n0\n"}) {
         CHECK(!contains(menuOutput(scriptBeforeBattle, catalog), "Уборка завершена"));
     }
-    const std::string regenerated = menuOutput("40\n0\n2\n1\n0\n", catalog);
+    const std::string regenerated = menuOutput("1\n40\n0\n1\n1\n1\n1\n2\n1\n1\n1\n0\n", catalog);
     CHECK(contains(regenerated, "Итог: победили"));
-    const std::string reset = menuOutput("40\n42\n3\n10\n0\n1\n1\n10\n0\n1\n0\n", catalog);
+    const std::string reset = menuOutput("1\n40\n42\n1\n1\n1\n1\n3\n10\n0\n1\n1\n1\n1\n1\n1\n10\n0\n1\n1\n1\n1\n1\n0\n", catalog);
     const auto result = reset.find("Итог: победили");
     CHECK(result != std::string::npos);
     CHECK(reset.find("Итог: победили", result + 1) != std::string::npos);
@@ -145,6 +147,102 @@ void testRunnerUsesEngineAndLeavesInputAlone() {
     CHECK(!contains(finishedOutput.str(), "Уборка завершена"));
 }
 
+class RecordingView final : public View {
+public:
+    std::vector<BattleSnapshot> frames;
+    std::vector<std::string> messages;
+    std::vector<ViewStage> stages;
+    std::deque<std::uint32_t> numbers;
+    std::deque<std::uint32_t> actions;
+    bool closeAfterFrame = false;
+
+    void setStage(ViewStage stage) override { stages.push_back(stage); }
+    std::optional<std::uint32_t> readNumber(const std::string&, std::uint32_t,
+                                           std::uint32_t) override {
+        if (numbers.empty()) return std::nullopt;
+        const auto number = numbers.front();
+        numbers.pop_front();
+        return number;
+    }
+    std::optional<std::uint32_t> choose(const std::vector<MenuChoice>&) override {
+        if (actions.empty()) return std::nullopt;
+        const auto action = actions.front();
+        actions.pop_front();
+        return action;
+    }
+    void message(const std::string& text) override { messages.push_back(text); }
+    void showArmies(const BattleSnapshot& frame) override {
+        frames.push_back(frame);
+        if (closeAfterFrame && frames.size() == 2) throw ViewClosed{};
+    }
+};
+
+void testViewOwnsSnapshotsAndReceivesFormattedEvents() {
+    RecordingView view;
+    ConsoleUI ui(view);
+    Army a, b;
+    a.add(std::make_unique<LightUnit>("Тиль", 20, 7, 1, 10));
+    b.add(std::make_unique<HeavyUnit>("Гурм", 45, 9, 5, 30));
+    ui.showArmies(a, b);
+    a.front()->takeDamage(100);
+    a.removeDead();
+    ui.showArmies(a, b);
+    CHECK(view.frames.size() == 2);
+    CHECK(view.frames[0].armies[0].units[0].name == "Тиль");
+    CHECK(view.frames[0].armies[0].units[0].hp == 20);
+    CHECK(view.frames[0].armies[0].units[0].maxHp == 20);
+    CHECK(!view.frames[0].finished);
+    CHECK(view.frames[1].finished);
+    CHECK(view.frames[1].armies[0].units.empty());
+
+    const BattleEvent event{EventType::Shot, 1, 0, "Вейн", "Гурм", 5, 40};
+    std::mt19937 rng(42), expectedRng(42);
+    const auto expected = EventFormatter::format(event, expectedRng);
+    ui.showEvents({event}, rng);
+    CHECK(view.messages.back() == expected);
+    CHECK(rng() == expectedRng());
+}
+
+void testClosingViewStopsRunnerAtTurnBoundary() {
+    const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
+    ArmyGenerator generator(catalog);
+    std::mt19937 armyRng(51), expectedRng(51), logRng(42);
+    Army a = generator.generate(70, armyRng), b = generator.generate(70, armyRng);
+    Army expectedA = generator.generate(70, expectedRng);
+    Army expectedB = generator.generate(70, expectedRng);
+    BattleEngine engine(a, b, 42), expectedEngine(expectedA, expectedB, 42);
+    RecordingView view;
+    view.closeAfterFrame = true;
+    ConsoleUI ui(view);
+    bool closed = false;
+    try { BattleRunner(ui).run(engine, a, b, logRng); }
+    catch (const ViewClosed&) { closed = true; }
+    CHECK(closed);
+    CHECK(view.frames.size() == 2);
+    expectedEngine.nextTurn();
+    std::istringstream in;
+    std::ostringstream actual, expected;
+    ConsoleUI actualUi(in, actual), expectedUi(in, expected);
+    actualUi.showArmies(a, b);
+    expectedUi.showArmies(expectedA, expectedB);
+    CHECK(actual.str() == expected.str());
+}
+
+void testMenuSendsExplicitStagesToView() {
+    RecordingView view;
+    view.numbers = {40, 42};
+    view.actions = {1, 1, 1, 1, 1, 1, 0};
+    ConsoleUI ui(view);
+    const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
+    Menu(ui, catalog, "build/ui-menu-tests/autosave.txt").run();
+    CHECK((view.stages == std::vector<ViewStage>{ViewStage::Setup, ViewStage::Setup,
+                                               ViewStage::Recruitment, ViewStage::Recruitment,
+                                               ViewStage::Battle, ViewStage::Result}));
+    CHECK(view.frames.size() >= 2);
+    CHECK(!view.frames.front().finished);
+    CHECK(view.frames.back().finished);
+}
+
 }  // namespace
 
 int main() {
@@ -152,6 +250,9 @@ int main() {
     testInput();
     testMenu();
     testRunnerUsesEngineAndLeavesInputAlone();
+    testViewOwnsSnapshotsAndReceivesFormattedEvents();
+    testClosingViewStopsRunnerAtTurnBoundary();
+    testMenuSendsExplicitStagesToView();
     std::cout << (failures == 0 ? "All UI tests passed\n" : "UI tests failed\n");
     return failures == 0 ? 0 : 1;
 }
