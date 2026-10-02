@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Русские строки в исходниках: без этого MSVC читает файлы в системной кодировке
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # Каждый дописывает свои файлы только в конец списка (см. README)
 add_executable(shieldwall
     src/main.cpp
