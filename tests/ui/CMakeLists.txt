@@ -23,6 +23,7 @@ foreach(Pair "Unit|LightUnit::LightUnit|UnitStub" "Army|Army::add|ArmyStub"
 endforeach()
 
 add_library(test_support STATIC ${CoreSources}
+    "${Root}/src/TargetSelector.cpp"
     "${Root}/src/UnitCatalog.cpp" "${Root}/src/UnitFactory.cpp"
     "${Root}/src/ArmyGenerator.cpp" "${Root}/src/SaveService.cpp"
     "${Root}/src/BattleReplay.cpp" "${Root}/src/ArmyBuilder.cpp")
