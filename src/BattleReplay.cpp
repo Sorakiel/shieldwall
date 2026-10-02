@@ -2,6 +2,9 @@
 #include "UnitFactory.h"
 
 BattleSession BattleReplay::replay(const SaveData& data) {
+    if (data.phase == SavePhase::Recruitment) {
+        throw DataError("в фазе закупки боя ещё нет, восстанавливать нечего");
+    }
     auto build = [](const std::vector<UnitRecord>& records) {
         auto army = std::make_unique<Army>();
         for (const UnitRecord& r : records) {

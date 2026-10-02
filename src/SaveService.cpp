@@ -1,10 +1,62 @@
 #include "SaveService.h"
+#include <filesystem>
 #include <fstream>
 #include <sstream>
+#include "ArmyGenerator.h"
 
 namespace {
 
 const char* const Header = "shieldwall-save";
+
+struct PhaseToken {
+    SavePhase phase;
+    const char* token;
+};
+const PhaseToken PhaseTokens[] = {
+    {SavePhase::Recruitment, "recruitment"},
+    {SavePhase::Battle, "battle"},
+    {SavePhase::Result, "result"},
+};
+
+const char* phaseToken(SavePhase phase) {
+    for (const PhaseToken& entry : PhaseTokens) {
+        if (entry.phase == phase) return entry.token;
+    }
+    throw DataError("неизвестная фаза партии");
+}
+
+SavePhase parsePhase(const std::string& token) {
+    for (const PhaseToken& entry : PhaseTokens) {
+        if (token == entry.token) return entry.phase;
+    }
+    throw DataError("неизвестная фаза «" + token + "», допустимы recruitment, battle, result");
+}
+
+// Одни и те же проверки на записи и на чтении: битое сохранение не должно
+// ни создаваться, ни открываться
+void checkArmyFits(const std::vector<UnitRecord>& army, int limit, const char* title) {
+    int spent = 0;
+    for (const UnitRecord& r : army) {
+        if (!ArmyGenerator::canAfford(spent, r.spec.cost, limit)) {
+            throw DataError(std::string(title) + " не помещается в лимит " + std::to_string(limit));
+        }
+        spent += r.spec.cost;
+    }
+}
+
+void validate(const SaveData& data) {
+    if (data.costLimit <= 0) {
+        throw DataError("лимит цены должен быть больше нуля");
+    }
+    if (data.turn < 0) {
+        throw DataError("номер хода не может быть отрицательным");
+    }
+    if (data.phase == SavePhase::Recruitment && data.turn != 0) {
+        throw DataError("в фазе закупки номер хода должен быть 0");
+    }
+    checkArmyFits(data.armyA, data.costLimit, "первая армия");
+    checkArmyFits(data.armyB, data.costLimit, "вторая армия");
+}
 
 void checkName(const std::string& name) {
     if (name.empty() || name.find_first_of(";\r\n") != std::string::npos ||
@@ -107,10 +159,10 @@ std::vector<UnitRecord> SaveService::snapshot(Army& army) {
 }
 
 void SaveService::write(const SaveData& data, std::ostream& out) {
-    if (data.turn < 0) {
-        throw DataError("номер хода не может быть отрицательным");
-    }
+    validate(data);
     out << Header << ";" << SupportedVersion << "\n";
+    out << "phase;" << phaseToken(data.phase) << "\n";
+    out << "limit;" << data.costLimit << "\n";
     out << "seed;" << data.seed << "\n";
     out << "turn;" << data.turn << "\n";
     writeRecords(out, 0, data.armyA);
@@ -122,6 +174,10 @@ void SaveService::saveToFile(const SaveData& data, const std::string& path) {
     std::ostringstream text;
     write(data, text);
 
+    std::filesystem::path target(path);
+    if (target.has_parent_path()) {
+        std::filesystem::create_directories(target.parent_path());
+    }
     std::ofstream out(path, std::ios::trunc);
     if (!out) {
         throw DataError("не удалось открыть файл сохранения «" + path + "» для записи");
@@ -147,6 +203,14 @@ SaveData SaveService::read(std::istream& in, const std::string& source) {
                             " не поддерживается, нужна " + std::to_string(SupportedVersion));
         }
 
+        std::vector<std::string> phase = nextFields(reader, "phase;...");
+        expectFields(phase, "phase", 2);
+        data.phase = parsePhase(phase[1]);
+
+        std::vector<std::string> limit = nextFields(reader, "limit;N");
+        expectFields(limit, "limit", 2);
+        data.costLimit = dataformat::parseInt(limit[1], "лимит цены");
+
         std::vector<std::string> seed = nextFields(reader, "seed;N");
         expectFields(seed, "seed", 2);
         data.seed = parseSeed(seed[1]);
@@ -154,9 +218,6 @@ SaveData SaveService::read(std::istream& in, const std::string& source) {
         std::vector<std::string> turn = nextFields(reader, "turn;N");
         expectFields(turn, "turn", 2);
         data.turn = dataformat::parseInt(turn[1], "номер хода");
-        if (data.turn < 0) {
-            throw DataError("номер хода не может быть отрицательным");
-        }
 
         data.armyA = readArmy(reader, 0);
         data.armyB = readArmy(reader, 1);
@@ -164,6 +225,7 @@ SaveData SaveService::read(std::istream& in, const std::string& source) {
         if (reader.next(extra)) {
             throw DataError("после второй армии есть лишние строки");
         }
+        validate(data);
     } catch (const DataError& e) {
         throw DataError(source + ", строка " + std::to_string(reader.lineNo()) + ": " + e.what());
     }

@@ -168,6 +168,8 @@ SaveData makeSave(std::uint32_t battleSeed, int turn) {
     Army a = generator.generate(120, rng);
     Army b = generator.generate(120, rng);
     SaveData data;
+    data.phase = SavePhase::Battle;
+    data.costLimit = 120;
     data.seed = battleSeed;
     data.turn = turn;
     data.armyA = SaveService::snapshot(a);
@@ -186,26 +188,81 @@ void testSaveRoundTrip() {
     std::istringstream in(serialize(data));
     SaveData loaded = SaveService::read(in, "save.txt");
     CHECK(loaded.seed == 4000000000u && loaded.turn == 12);
+    CHECK(loaded.phase == SavePhase::Battle && loaded.costLimit == 120);
     CHECK(serialize(loaded) == serialize(data));
     CHECK(!loaded.armyA.empty() && !loaded.armyB.empty());
 
-    std::filesystem::path path = std::filesystem::temp_directory_path() / "shieldwall_save.txt";
-    SaveService::saveToFile(data, path.string());
-    CHECK(serialize(SaveService::loadFromFile(path.string())) == serialize(data));
-    std::filesystem::remove(path);
+    // Папка saves/ может ещё не существовать: автосохранение должно её создать
+    std::filesystem::path dir = std::filesystem::temp_directory_path() / "shieldwall_saves";
+    std::string path = (dir / "auto" / "save.txt").string();
+    SaveService::saveToFile(data, path);
+    CHECK(serialize(SaveService::loadFromFile(path)) == serialize(data));
+    std::filesystem::remove_all(dir);
 }
 
 void testBrokenSave() {
-    const std::string head = "shieldwall-save;1\nseed;5\nturn;3\n";
+    const std::string head = "shieldwall-save;2\nphase;battle\nlimit;40\nseed;5\nturn;3\n";
     CHECK(saveError(head + "army;0;0\narmy;1;0\n").empty());
     CHECK(contains(saveError(""), "файл закончился"));
     CHECK(contains(saveError("version;1\n"), "не сохранение"));
-    CHECK(contains(saveError("shieldwall-save;9\n"), "не поддерживается"));
-    CHECK(contains(saveError("shieldwall-save;1\nseed;-5\n"), "32 бита"));
+    CHECK(contains(saveError("shieldwall-save;1\n"), "не поддерживается"));
+    CHECK(contains(saveError("shieldwall-save;2\nphase;lunch\n"), "неизвестная фаза"));
+    CHECK(contains(saveError("shieldwall-save;2\nphase;battle\nlimit;0\nseed;5\nturn;3\narmy;0;0\narmy;1;0\n"),
+                   "лимит цены"));
+    CHECK(contains(saveError("shieldwall-save;2\nphase;battle\nlimit;40\nseed;-5\n"), "32 бита"));
     CHECK(contains(saveError(head + "army;0;2\nlight;Тиль;20;7;0;0;1;10\n"), "файл закончился"));
 
     std::string err = saveError(head + "army;0;1\narcher;Вейн;16;4;11;0;0;18\narmy;1;0\n");
-    CHECK(contains(err, "save.txt, строка 5") && contains(err, "лучника"));
+    CHECK(contains(err, "save.txt, строка 7") && contains(err, "лучника"));
+
+    // Состав дороже лимита и ход в фазе закупки: такие сохранения не открываются
+    const std::string heavy = "army;0;2\nheavy;А;45;9;0;0;5;30\nheavy;Б;45;9;0;0;5;30\narmy;1;0\n";
+    CHECK(contains(saveError(head + heavy), "не помещается в лимит 40"));
+    const std::string recruitment = "shieldwall-save;2\nphase;recruitment\nlimit;40\nseed;5\nturn;1\n";
+    CHECK(contains(saveError(recruitment + "army;0;0\narmy;1;0\n"), "в фазе закупки"));
+}
+
+void testSavePhases() {
+    // Сохранение в середине закупки: первая армия собрана, вторая пустая
+    UnitCatalog catalog = loadDefault();
+    std::mt19937 rng(8);
+    ArmyBuilder first(catalog, 60);
+    first.buy(UnitKind::Heavy, rng);
+    first.buy(UnitKind::Archer, rng);
+
+    SaveData data;
+    data.phase = SavePhase::Recruitment;
+    data.costLimit = 60;
+    data.seed = 9;
+    data.armyA = first.units();
+    std::istringstream in(serialize(data));
+    SaveData loaded = SaveService::read(in, "save.txt");
+    CHECK(loaded.phase == SavePhase::Recruitment && loaded.turn == 0 && loaded.armyB.empty());
+
+    // Закупка продолжается с того же места и по тем же правилам лимита
+    ArmyBuilder restored = ArmyBuilder::restore(catalog, loaded.costLimit, loaded.armyA);
+    CHECK(restored.spent() == 48 && restored.remaining() == 12);
+    CHECK(restored.buy(UnitKind::Heavy, rng) == BuildResult::NotEnoughBudget);
+    CHECK(restored.buy(UnitKind::Light, rng) == BuildResult::Ok);
+    CHECK(contains(errorOf([&] { ArmyBuilder::restore(catalog, 40, loaded.armyA); }),
+                   "не помещается в лимит 40"));
+
+    // Боя в фазе закупки ещё нет
+    CHECK(contains(errorOf([&] { BattleReplay::replay(loaded); }), "в фазе закупки"));
+
+    // Результат: сохранение с последним ходом открывается в уже законченный бой
+    SaveData finished = makeSave(42, 0);
+    BattleSession live = BattleReplay::replay(finished);
+    int turns = 0;
+    while (!live.engine->finished()) {
+        live.engine->nextTurn();
+        ++turns;
+    }
+    finished.phase = SavePhase::Result;
+    finished.turn = turns;
+    std::istringstream resultIn(serialize(finished));
+    BattleSession over = BattleReplay::replay(SaveService::read(resultIn, "save.txt"));
+    CHECK(over.engine->finished() && over.turn == turns);
 }
 
 void testReplayRestoresSamePicture() {
@@ -243,6 +300,7 @@ int main() {
     testArmyBuilder();
     testSaveRoundTrip();
     testBrokenSave();
+    testSavePhases();
     testReplayRestoresSamePicture();
 
     std::cout << (failures == 0 ? "все тесты пройдены\n" : "есть провалы\n");

@@ -17,6 +17,10 @@ class ArmyBuilder {
 public:
     ArmyBuilder(UnitCatalog catalog, int costLimit);
 
+    // Продолжает недособранную армию из сохранения. DataError, если состав
+    // не помещается в лимит: такое сохранение повреждено или исправлено вручную.
+    static ArmyBuilder restore(UnitCatalog catalog, int costLimit, std::vector<UnitRecord> units);
+
     // Покупает юнита выбранного типа в конец строя, имя берёт случайное
     BuildResult buy(UnitKind kind, std::mt19937& rng);
     BuildResult remove(std::size_t index);
