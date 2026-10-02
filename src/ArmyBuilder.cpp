@@ -18,6 +18,21 @@ const UnitSpec* findSpec(const UnitCatalog& catalog, UnitKind kind) {
 ArmyBuilder::ArmyBuilder(UnitCatalog catalog, int costLimit)
     : catalog_(std::move(catalog)), costLimit_(costLimit) {}
 
+ArmyBuilder ArmyBuilder::restore(UnitCatalog catalog, int costLimit,
+                                 std::vector<UnitRecord> units) {
+    ArmyBuilder builder(std::move(catalog), costLimit);
+    for (UnitRecord& record : units) {
+        // Тот же canAfford, что и при обычной покупке
+        if (!ArmyGenerator::canAfford(builder.spent_, record.spec.cost, costLimit)) {
+            throw DataError("состав в сохранении не помещается в лимит " +
+                            std::to_string(costLimit));
+        }
+        builder.spent_ += record.spec.cost;
+        builder.units_.push_back(std::move(record));
+    }
+    return builder;
+}
+
 bool ArmyBuilder::canBuy(UnitKind kind) const {
     const UnitSpec* spec = findSpec(catalog_, kind);
     return spec != nullptr && ArmyGenerator::canAfford(spent_, spec->cost, costLimit_);
