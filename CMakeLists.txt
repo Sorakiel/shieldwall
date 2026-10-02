@@ -33,6 +33,7 @@ add_executable(shieldwall
     src/View.cpp
     src/ConsoleView.cpp
     src/SfmlView.cpp
+    src/ArmyBuilder.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)
