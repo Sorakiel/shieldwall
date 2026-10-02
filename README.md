@@ -72,6 +72,9 @@ cmake --build build --config Release
 - Записать: `SaveService::saveToFile(data, "saves/autosave.txt")` (папка создаётся сама).
 - Открыть: `SaveService::loadFromFile`; для боя `BattleReplay::replay(data)`, для закупки
   `ArmyBuilder::restore(...)`.
+- Список и имена сохранений (`SaveSlots`): `list("saves")` для экрана «Загрузить» (автосохранение первым,
+  битые файлы приходят с причиной), `pathFor("saves", имя)` проверяет имя игрока, `suggestName` даёт
+  свободное «save-N».
 - Составы нужно снять **до первого хода** (`SaveService::snapshot` или `ArmyBuilder::units()`):
   после боя у юнитов уже нет стартового hp.
 
