@@ -14,6 +14,7 @@ if grep -q 'LightUnit::LightUnit' src/Unit.cpp; then files="$files src/Unit.cpp"
 if grep -q 'Army::add' src/Army.cpp; then files="$files src/Army.cpp"; else files="$files tests/stubs/ArmyStub.cpp"; fi
 if grep -q 'BattleEngine::nextTurn' src/BattleEngine.cpp; then
     files="$files src/BattleEngine.cpp"
+    [ -f src/TargetSelector.cpp ] && files="$files src/TargetSelector.cpp"
 elif [ -f tests/stubs/EngineStub.cpp ]; then
     files="$files tests/stubs/EngineStub.cpp"
 fi
