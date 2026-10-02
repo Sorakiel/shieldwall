@@ -21,6 +21,10 @@ add_executable(shieldwall
     tests/stubs/UnitStub.cpp
     tests/stubs/ArmyStub.cpp
     tests/stubs/EngineStub.cpp
+    src/EventFormatter.cpp
+    src/ConsoleUI.cpp
+    src/Menu.cpp
+    src/BattleRunner.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)
