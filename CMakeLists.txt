@@ -33,6 +33,7 @@ add_executable(shieldwall
     src/ArmyBuilder.cpp
     src/TargetSelector.cpp
     include/UserInterface.h
+    src/SaveSlots.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)
