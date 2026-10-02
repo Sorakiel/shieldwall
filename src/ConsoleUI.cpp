@@ -1,77 +1,49 @@
 #include "ConsoleUI.h"
-#include <charconv>
+#include "ConsoleView.h"
 #include "EventFormatter.h"
 
-namespace {
+ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
+    : ownedView_(std::make_unique<ConsoleView>(in, out)), view_(ownedView_.get()) {}
 
-const char* kindName(UnitKind kind) {
-    switch (kind) {
-    case UnitKind::Light: return "Лёгкий";
-    case UnitKind::Heavy: return "Тяжёлый";
-    case UnitKind::Archer: return "Лучник";
-    }
-    return "Юнит";
+void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
+
+std::optional<std::uint32_t> ConsoleUI::choose(const std::vector<MenuChoice>& choices) {
+    return view_->choose(choices);
 }
-
-}  // namespace
 
 std::optional<std::uint32_t> ConsoleUI::readNumber(const std::string& prompt,
                                                  std::uint32_t min, std::uint32_t max) {
-    std::string line;
-    while (true) {
-        out_ << prompt << std::flush;
-        if (!std::getline(in_, line)) {
-            message("Ввод завершён. До встречи!");
-            return std::nullopt;
-        }
-        const auto first = line.find_first_not_of(" \t\r");
-        if (first != std::string::npos) {
-            const auto last = line.find_last_not_of(" \t\r");
-            const char* begin = line.data() + first;
-            const char* end = line.data() + last + 1;
-            std::uint32_t value = 0;
-            const auto parsed = std::from_chars(begin, end, value);
-            if (parsed.ec == std::errc{} && parsed.ptr == end && value >= min && value <= max) {
-                return value;
-            }
-        }
-        out_ << "Введите целое число от " << min << " до " << max << ".\n";
-    }
+    return view_->readNumber(prompt, min, max);
 }
 
-void ConsoleUI::message(const std::string& text) {
-    out_ << text << '\n';
-}
-
-void ConsoleUI::showArmy(Army& army, int team) {
-    out_ << EventFormatter::teamName(team) << " — бойцов: " << army.size()
-         << ", стоимость: " << army.totalCost() << '\n';
-    if (army.size() == 0) {
-        message("  Строй пуст.");
-    }
-    for (std::size_t i = 0; i < army.size(); ++i) {
-        const Unit* unit = army.at(i);
-        out_ << "  " << i + 1 << ". " << kindName(unit->kind()) << " «" << unit->name()
-             << "» | hp " << unit->hp() << '/' << unit->maxHp()
-             << " | цена " << unit->cost() << '\n';
-    }
-}
+void ConsoleUI::message(const std::string& text) { view_->message(text); }
 
 void ConsoleUI::showArmies(Army& a, Army& b) {
-    showArmy(a, 0);
-    showArmy(b, 1);
+    BattleSnapshot snapshot;
+    Army* armies[] = {&a, &b};
+    for (int team = 0; team < 2; ++team) {
+        auto& output = snapshot.armies[team];
+        Army& army = *armies[team];
+        output.name = EventFormatter::teamName(team);
+        output.totalCost = army.totalCost();
+        output.units.reserve(army.size());
+        for (std::size_t i = 0; i < army.size(); ++i) {
+            const Unit& unit = *army.at(i);
+            output.units.push_back({unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost()});
+        }
+    }
+    snapshot.finished = a.isDefeated() || b.isDefeated();
+    // Копии остаются валидными после removeDead() на следующем ходе.
+    view_->showArmies(snapshot);
 }
 
 void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937& rng) {
-    for (const BattleEvent& event : events) {
-        message(EventFormatter::format(event, rng));
-    }
+    for (const BattleEvent& event : events) message(EventFormatter::format(event, rng));
 }
 
 void ConsoleUI::showResult(int winner) {
-    if (winner == 0 || winner == 1) {
-        message(std::string("Итог: победили ") + EventFormatter::teamName(winner) + ".");
-    } else {
-        message("Итог: победитель не определён.");
-    }
+    const std::string text = winner == 0 || winner == 1
+        ? std::string("Итог: победили ") + EventFormatter::teamName(winner) + "."
+        : "Итог: победитель не определён.";
+    view_->showResult(winner, text);
 }

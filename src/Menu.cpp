@@ -23,6 +23,7 @@ void Menu::run() {
     while (state != State::Exit) {
         switch (state) {
         case State::Setup: {
+            ui_.setStage(ViewStage::Setup);
             const auto limit = ui_.readNumber("Лимит цены каждой армии: ", minBudget,
                                               std::numeric_limits<int>::max());
             if (!limit) return;
@@ -36,12 +37,13 @@ void Menu::run() {
             break;
         }
         case State::Recruitment: {
+            ui_.setStage(ViewStage::Recruitment);
             a = generator.generate(budget, armyRng);
             b = generator.generate(budget, armyRng);
             ui_.message("\nЛимит: " + std::to_string(budget) + ", seed: " + std::to_string(seed));
             ui_.showArmies(a, b);
-            ui_.message("1 — К бою\n2 — Сгенерировать заново\n3 — Изменить настройки\n0 — Выход");
-            const auto choice = ui_.readNumber("> ", 0, 3);
+            const auto choice = ui_.choose({{1, "К бою"}, {2, "Сгенерировать заново"},
+                                            {3, "Изменить настройки"}, {0, "Выход"}});
             if (!choice) return;
             switch (*choice) {
             case 0: state = State::Exit; break;
@@ -52,6 +54,7 @@ void Menu::run() {
             break;
         }
         case State::Battle: {
+            ui_.setStage(ViewStage::Battle);
             BattleEngine engine(a, b, seed);
             // У движка пока закрытый rng_. Отдельный поток с тем же seed сохраняет
             // воспроизводимость текста и не меняет исход при добавлении строк лога.
@@ -61,8 +64,8 @@ void Menu::run() {
             break;
         }
         case State::Result: {
-            ui_.message("\n1 — Новая партия\n0 — Выход");
-            const auto choice = ui_.readNumber("> ", 0, 1);
+            ui_.setStage(ViewStage::Result);
+            const auto choice = ui_.choose({{1, "Новая партия"}, {0, "Выход"}});
             if (!choice) return;
             state = *choice == 1 ? State::Setup : State::Exit;
             break;

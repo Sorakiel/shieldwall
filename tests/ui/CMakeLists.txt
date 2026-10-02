@@ -31,6 +31,7 @@ target_include_directories(test_support PUBLIC "${Root}/include")
 add_executable(ui_tests UiTests.cpp
     "${Root}/src/EventFormatter.cpp" "${Root}/src/ConsoleUI.cpp"
     "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp")
+target_sources(ui_tests PRIVATE "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp")
 target_link_libraries(ui_tests PRIVATE test_support)
 add_executable(data_tests "${Root}/tests/DataTests.cpp")
 target_link_libraries(data_tests PRIVATE test_support)
