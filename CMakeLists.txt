@@ -40,6 +40,11 @@ add_executable(shieldwall
 target_include_directories(shieldwall PRIVATE include)
 target_compile_definitions(shieldwall PRIVATE SHIELDWALL_GRAPHICS=$<BOOL:${SHIELDWALL_GRAPHICS}>)
 
+if(MSVC)
+    # /utf-8 задаёт кодировку исходников, манифест — путей во время работы.
+    target_sources(shieldwall PRIVATE src/WindowsUtf8.manifest)
+endif()
+
 if(SHIELDWALL_GRAPHICS)
     target_sources(shieldwall PRIVATE src/SfmlView.cpp)
     # Архив с проверкой SHA-256: отдельно устанавливать SFML или Git не требуется.

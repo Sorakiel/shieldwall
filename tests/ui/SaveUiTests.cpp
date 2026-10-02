@@ -129,24 +129,40 @@ void observeAutosave(ScriptView& view, const SaveDirectory& dir) {
 }
 
 void testNamedSaveDuringBattle(const UnitCatalog& catalog) {
-    for (const auto mode : {BattleMode::Manual, BattleMode::Automatic}) {
-        SaveDirectory dir;
-        const auto initial = battle(catalog, 2);
-        SaveService::saveToFile(initial, dir.autosave());
-        ScriptView view;
-        view.actions = {2, 1, mode == BattleMode::Manual ? 2u : 1u, 0};
-        view.turns = {TurnAction::Save, TurnAction::Exit};
-        view.texts = {std::string("тест")};
-        observeAutosave(view, dir);
-        run(view, catalog, dir);
-        CHECK(fs::exists(dir.named("тест")));
-        const auto saved = SaveService::loadFromFile(dir.named("тест").string());
-        CHECK(saved.phase == SavePhase::Battle && saved.turn == 2);
-        CHECK(view.progress == std::vector<int>{2});
-        CHECK(view.modes == std::vector<BattleMode>{mode});
-        std::ostringstream a, b;
-        SaveService::write(initial, a); SaveService::write(saved, b);
-        CHECK(a.str() == b.str());
+    for (const auto* name : {u8"тест", u8"тест 日本語"}) {
+        for (const auto mode : {BattleMode::Manual, BattleMode::Automatic}) {
+            SaveDirectory dir;
+            const auto initial = battle(catalog, 2);
+            SaveService::saveToFile(initial, dir.autosave());
+            ScriptView view;
+            view.actions = {2, 1, mode == BattleMode::Manual ? 2u : 1u, 0};
+            view.turns = {TurnAction::Save, TurnAction::Exit};
+            view.texts = {std::string(name)};
+            observeAutosave(view, dir);
+            run(view, catalog, dir);
+            CHECK(fs::exists(dir.named(name)));
+            const auto saved = SaveService::loadFromFile(dir.named(name).string());
+            CHECK(saved.phase == SavePhase::Battle && saved.turn == 2);
+            CHECK(view.progress == std::vector<int>{2});
+            CHECK(view.modes == std::vector<BattleMode>{mode});
+            std::ostringstream a, b;
+            SaveService::write(initial, a); SaveService::write(saved, b);
+            CHECK(a.str() == b.str());
+            const auto summaries = SaveSlots::list(dir.path.string());
+            CHECK(summaries.size() == 2);
+            if (summaries.size() == 2) {
+                CHECK(summaries[1].valid && summaries[1].name == name);
+                CHECK(summaries[1].path == dir.named(name).string());
+            }
+            const auto savedContents = contents(dir.named(name));
+            ScriptView loaded;
+            loaded.actions = {2, 2, 2, 0};
+            loaded.turns = {TurnAction::Exit};
+            run(loaded, catalog, dir);
+            CHECK(loaded.hasMessage("Сыграно ходов: 2"));
+            CHECK(loaded.progress == std::vector<int>{2});
+            CHECK(contents(dir.named(name)) == savedContents);
+        }
     }
 }
 
@@ -349,16 +365,21 @@ void testUtf8InputAndConsole() {
 }  // namespace
 
 int main() {
-    const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
-    testNamedSaveDuringBattle(catalog);
-    testRunnerWithoutSaveCallback(catalog);
-    testReadySaveDefaultRetryAndCancel(catalog);
-    testOverwrite(catalog);
-    testRecruitmentAndResultSave(catalog);
-    testLoadSecondAndDamaged(catalog);
-    testPaging(catalog);
-    testReplacingAndCancellingParty(catalog);
-    testUtf8InputAndConsole();
-    std::cout << (failures == 0 ? "All save UI tests passed\n" : "Save UI tests failed\n");
-    return failures == 0 ? 0 : 1;
+    try {
+        const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
+        testNamedSaveDuringBattle(catalog);
+        testRunnerWithoutSaveCallback(catalog);
+        testReadySaveDefaultRetryAndCancel(catalog);
+        testOverwrite(catalog);
+        testRecruitmentAndResultSave(catalog);
+        testLoadSecondAndDamaged(catalog);
+        testPaging(catalog);
+        testReplacingAndCancellingParty(catalog);
+        testUtf8InputAndConsole();
+        std::cout << (failures == 0 ? "All save UI tests passed\n" : "Save UI tests failed\n");
+        return failures == 0 ? 0 : 1;
+    } catch (const std::exception& error) {
+        std::cerr << "Save UI test exception: " << error.what() << '\n';
+        return 1;
+    }
 }
