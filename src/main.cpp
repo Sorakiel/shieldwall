@@ -7,7 +7,9 @@
 #include "ConsoleUI.h"
 #include "ConsoleView.h"
 #include "Menu.h"
+#if SHIELDWALL_GRAPHICS
 #include "SfmlView.h"
+#endif
 #include "UnitCatalog.h"
 
 #ifdef _WIN32
@@ -56,6 +58,11 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+    DWORD outputMode = 0;
+    const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (GetConsoleMode(output, &outputMode)) {
+        SetConsoleMode(output, outputMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
 #endif
     try {
         bool console = false;
@@ -65,7 +72,7 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             const std::string argument = argv[i];
             if (argument == "--help") {
-                std::cout << "Shieldwall: окно SFML по умолчанию\n"
+                std::cout << "Shieldwall: закупка, бой по ходам, автосохранение\n"
                           << "shieldwall [--console] [путь к data/units.txt]\n"
                           << "shieldwall --demo-log   — пример журнала в консоли\n"
                           << "shieldwall --demo-view  — пример графического вида и журнала\n";
@@ -81,6 +88,11 @@ int main(int argc, char* argv[]) {
         if ((demoLog && demoView) || (demoView && console)) {
             throw std::runtime_error("Выберите один режим демонстрации");
         }
+        if (demoView) {
+#if !SHIELDWALL_GRAPHICS
+            throw std::runtime_error("Графика отключена. Соберите с -DSHIELDWALL_GRAPHICS=ON");
+#endif
+        }
         if (demoLog) {
             ConsoleUI ui(std::cin, std::cout);
             ui.message("Демонстрация журнала: заранее заданные события, не настоящий бой.");
@@ -94,7 +106,11 @@ int main(int argc, char* argv[]) {
         const UnitCatalog catalog = UnitCatalog::loadFromFile(path.string());
         std::unique_ptr<View> view;
         if (console) view = std::make_unique<ConsoleView>(std::cin, std::cout);
+#if SHIELDWALL_GRAPHICS
         else view = std::make_unique<SfmlView>(resource(directory, "assets/NotoSans-Regular.ttf"));
+#else
+        else view = std::make_unique<ConsoleView>(std::cin, std::cout);
+#endif
         ConsoleUI ui(*view);
         if (demoView) {
             ui.setStage(ViewStage::Recruitment);

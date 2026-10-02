@@ -7,6 +7,17 @@ ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
 
 void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
 
+void ConsoleUI::setBattleProgress(int turn, BattleMode mode) {
+    view_->setBattleProgress(turn, mode);
+}
+
+TurnAction ConsoleUI::waitForTurn(BattleMode mode) { return view_->waitForTurn(mode); }
+bool ConsoleUI::handoff(int team) { return view_->handoff(team); }
+
+void ConsoleUI::showRecruitment(const RecruitmentSnapshot& snapshot) {
+    view_->showRecruitment(snapshot);
+}
+
 std::optional<std::uint32_t> ConsoleUI::choose(const std::vector<MenuChoice>& choices) {
     return view_->choose(choices);
 }

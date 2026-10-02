@@ -9,6 +9,9 @@ public:
     std::optional<std::uint32_t> readNumber(const std::string& prompt,
         std::uint32_t min, std::uint32_t max) override;
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override;
+    TurnAction waitForTurn(BattleMode mode) override;
+    bool handoff(int team) override;
+    void showRecruitment(const RecruitmentSnapshot& snapshot) override;
     void message(const std::string& text) override;
     void showArmies(const BattleSnapshot& snapshot) override;
 

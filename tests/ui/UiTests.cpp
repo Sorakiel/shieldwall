@@ -8,6 +8,7 @@
 #include "BattleRunner.h"
 #include "EventFormatter.h"
 #include "Menu.h"
+#include "ConsoleUI.h"
 
 namespace {
 
@@ -87,28 +88,28 @@ std::string menuOutput(const std::string& input, const UnitCatalog& catalog) {
     std::istringstream in(input);
     std::ostringstream out;
     ConsoleUI ui(in, out);
-    Menu(ui, catalog).run();
+    Menu(ui, catalog, "build/ui-menu-tests/autosave.txt").run();
     return out.str();
 }
 
 void testMenu() {
     const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
-    const std::string script = "9\n40\n42\n5\n1\n0\n";
+    const std::string script = "1\n9\n40\n42\n1\n1\n1\n1\n5\n1\n0\n";
     const std::string first = menuOutput(script, catalog);
     CHECK(first == menuOutput(script, catalog));
     CHECK(contains(first, "Введите целое число от 10"));
-    CHECK(contains(first, "Введите целое число от 0 до 3"));
+    CHECK(contains(first, "Введите целое число от 0 до 4"));
     CHECK(contains(first, "Уборка завершена"));
     CHECK(contains(first, "Итог: победили"));
     CHECK(contains(first, "Новая партия"));
 
     // Ни отмена, ни конец ввода не должны запускать бой.
-    for (const std::string scriptBeforeBattle : {"", "10\n", "10\n42\n", "10\n42\n0\n"}) {
+    for (const std::string scriptBeforeBattle : {"", "1\n10\n", "1\n10\n42\n1\n1\n", "1\n10\n42\n1\n1\n1\n1\n0\n"}) {
         CHECK(!contains(menuOutput(scriptBeforeBattle, catalog), "Уборка завершена"));
     }
-    const std::string regenerated = menuOutput("40\n0\n2\n1\n0\n", catalog);
+    const std::string regenerated = menuOutput("1\n40\n0\n1\n1\n1\n1\n2\n1\n1\n1\n0\n", catalog);
     CHECK(contains(regenerated, "Итог: победили"));
-    const std::string reset = menuOutput("40\n42\n3\n10\n0\n1\n1\n10\n0\n1\n0\n", catalog);
+    const std::string reset = menuOutput("1\n40\n42\n1\n1\n1\n1\n3\n10\n0\n1\n1\n1\n1\n1\n1\n10\n0\n1\n1\n1\n1\n1\n0\n", catalog);
     const auto result = reset.find("Итог: победили");
     CHECK(result != std::string::npos);
     CHECK(reset.find("Итог: победили", result + 1) != std::string::npos);
@@ -172,7 +173,7 @@ public:
     void message(const std::string& text) override { messages.push_back(text); }
     void showArmies(const BattleSnapshot& frame) override {
         frames.push_back(frame);
-        if (closeAfterFrame) throw ViewClosed{};
+        if (closeAfterFrame && frames.size() == 2) throw ViewClosed{};
     }
 };
 
@@ -217,7 +218,7 @@ void testClosingViewStopsRunnerAtTurnBoundary() {
     try { BattleRunner(ui).run(engine, a, b, logRng); }
     catch (const ViewClosed&) { closed = true; }
     CHECK(closed);
-    CHECK(view.frames.size() == 1);
+    CHECK(view.frames.size() == 2);
     expectedEngine.nextTurn();
     std::istringstream in;
     std::ostringstream actual, expected;
@@ -230,11 +231,12 @@ void testClosingViewStopsRunnerAtTurnBoundary() {
 void testMenuSendsExplicitStagesToView() {
     RecordingView view;
     view.numbers = {40, 42};
-    view.actions = {1, 0};
+    view.actions = {1, 1, 1, 1, 1, 1, 0};
     ConsoleUI ui(view);
     const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
-    Menu(ui, catalog).run();
-    CHECK((view.stages == std::vector<ViewStage>{ViewStage::Setup, ViewStage::Recruitment,
+    Menu(ui, catalog, "build/ui-menu-tests/autosave.txt").run();
+    CHECK((view.stages == std::vector<ViewStage>{ViewStage::Setup, ViewStage::Setup,
+                                               ViewStage::Recruitment, ViewStage::Recruitment,
                                                ViewStage::Battle, ViewStage::Result}));
     CHECK(view.frames.size() >= 2);
     CHECK(!view.frames.front().finished);

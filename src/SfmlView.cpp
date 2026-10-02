@@ -50,6 +50,9 @@ struct SfmlView::Impl {
     sf::RenderWindow window;
     sf::View camera{sf::FloatRect({0.f, 0.f}, {canvasWidth, canvasHeight})};
     BattleSnapshot snapshot;
+    RecruitmentSnapshot recruitment;
+    bool recruiting = false;
+    int handoffTeam = -1;
     ViewStage stage = ViewStage::Setup;
     std::deque<sf::String> log;
     std::vector<Button> buttons;
@@ -128,7 +131,7 @@ struct SfmlView::Impl {
         const bool hovered = enabled && bounds.contains(mouse);
         const sf::Color fill = !enabled ? panel : primary ? accent : hovered ? raised : panel;
         rectangle(x, y, width, height, fill, hovered ? accent : sf::Color(53, 70, 91));
-        const auto value = utf8(label);
+        const auto value = elide(utf8(label), width - 18.f, 16);
         text(value, x + (width - textWidth(value, 16)) / 2.f, y + (height - 24.f) / 2.f,
              16, !enabled ? sf::Color(81, 97, 116) : primary ? background : foreground);
         buttons.push_back({bounds, action, enabled});
@@ -136,7 +139,7 @@ struct SfmlView::Impl {
 
     bool hasChoice(std::uint32_t value) const {
         return std::any_of(choices.begin(), choices.end(),
-            [value](const MenuChoice& choice) { return choice.value == value; });
+            [value](const MenuChoice& choice) { return choice.enabled && choice.value == value; });
     }
 
     void appendLog(const std::string& value) {
@@ -178,6 +181,30 @@ struct SfmlView::Impl {
         auto& offset = unitOffsets[team];
         if (direction < 0) offset = offset >= visibleUnits ? offset - visibleUnits : 0;
         else offset = std::min(last, offset + visibleUnits);
+    }
+
+    void drawRecruitment() {
+        rectangle(24.f, 116.f, 832.f, 552.f, panel);
+        text(utf8("Закупка: " + recruitment.armies[recruitment.activeTeam].name),
+             48.f, 140.f, 23, accent);
+        text(utf8("Бюджет " + std::to_string(recruitment.limit) +
+                  "   Потрачено " + std::to_string(recruitment.spent) +
+                  "   Осталось " + std::to_string(recruitment.remaining)),
+             48.f, 178.f, 16, muted);
+        drawArmy(recruitment.activeTeam, 222.f);
+        float y = 462.f;
+        for (const auto& offer : recruitment.offers) {
+            rectangle(48.f, y + 8.f, 10.f, 10.f, kindColor(offer.kind));
+            text(utf8(std::string(unitKindName(offer.kind)) + "  |  цена " +
+                      std::to_string(offer.cost) + "  |  HP " + std::to_string(offer.hp) +
+                      "  |  атака " + std::to_string(offer.melee) +
+                      "  |  выстрел " + std::to_string(offer.ranged) +
+                      "  |  дальн. " + std::to_string(offer.range) +
+                      "  |  защита " + std::to_string(offer.defense)),
+                 70.f, y, 14, offer.enabled ? foreground : muted);
+            y += 43.f;
+        }
+        text(utf8("Номера в строю нужны для удаления и перестановки."), 48.f, 628.f, 14, muted);
     }
 
     void drawArmy(int team, float y) {
@@ -258,46 +285,61 @@ struct SfmlView::Impl {
         window.clear(background);
         window.setView(camera);
         buttons.clear();
+        if (handoffTeam >= 0) {
+            rectangle(250.f, 220.f, 780.f, 360.f, panel);
+            text(utf8("Передайте управление игроку " + std::to_string(handoffTeam + 1)),
+                 292.f, 270.f, 27, accent);
+            text(utf8("Предыдущий игрок должен отвернуться от экрана."),
+                 292.f, 330.f, 19, muted);
+            text(utf8("Нажмите Enter, когда будете готовы."), 292.f, 374.f, 19);
+            button("Продолжить", 292.f, 458.f, 240.f, submitAction, true, true);
+            button("Выход", 552.f, 458.f, 180.f, 0);
+            window.display();
+            return;
+        }
         text("SHIELDWALL", 28.f, 22.f, 32);
         text(utf8("Две армии. Один строй. Каждый ход на виду."), 30.f, 70.f, 15, muted);
         const std::string phase = stage == ViewStage::Setup ? "Настройка" :
-            stage == ViewStage::Recruitment ? "Армии готовы" :
+            stage == ViewStage::Recruitment ? (recruiting ? "Закупка" : "Армии готовы") :
             stage == ViewStage::Battle ? "Ход " + std::to_string(turn) : "Бой завершён";
         rectangle(1066.f, 31.f, 190.f, 42.f, raised);
         text(utf8(phase), 1082.f, 41.f, 16, accent);
 
-        rectangle(24.f, 116.f, 832.f, 552.f, panel);
-        drawArmy(0, 140.f);
-        rectangle(48.f, 368.f, 780.f, 1.f, raised);
-        drawArmy(1, 390.f);
-        const UnitKind kinds[] = {UnitKind::Light, UnitKind::Heavy, UnitKind::Archer};
-        for (int i = 0; i < 3; ++i) {
-            const float x = 48.f + static_cast<float>(i) * 170.f;
-            rectangle(x, 628.f, 12.f, 12.f, kindColor(kinds[i]));
-            text(utf8(unitKindName(kinds[i])), x + 20.f, 622.f, 14, muted);
+        if (recruiting) drawRecruitment();
+        else {
+            rectangle(24.f, 116.f, 832.f, 552.f, panel);
+            drawArmy(0, 140.f);
+            rectangle(48.f, 368.f, 780.f, 1.f, raised);
+            drawArmy(1, 390.f);
+            const UnitKind kinds[] = {UnitKind::Light, UnitKind::Heavy, UnitKind::Archer};
+            for (int i = 0; i < 3; ++i) {
+                const float x = 48.f + static_cast<float>(i) * 170.f;
+                rectangle(x, 628.f, 12.f, 12.f, kindColor(kinds[i]));
+                text(utf8(unitKindName(kinds[i])), x + 20.f, 622.f, 14, muted);
+            }
+            text(utf8("Рамка — команда"), 627.f, 622.f, 14, muted);
         }
-        text(utf8("Рамка — команда"), 627.f, 622.f, 14, muted);
         drawLog();
 
-        const bool resultStage = stage == ViewStage::Result;
-        button(resultStage ? "Новая партия" : "К бою", 24.f, 708.f, 168.f, 1,
-               hasChoice(1), true);
-        button("Следующий ход", 208.f, 708.f, 210.f, nextAction,
-               waitingForTurn && !enteringNumber);
-        button(automatic ? "Автобой: вкл." : "Автобой: выкл.", 434.f, 708.f, 188.f,
-               autoAction, !enteringNumber && (stage == ViewStage::Recruitment || waitingForTurn));
-        if (hasChoice(2)) button("Другие армии", 24.f, 766.f, 168.f, 2, true, false, 30.f);
-        if (hasChoice(3)) button("Настройки", 208.f, 766.f, 150.f, 3, true, false, 30.f);
-        if (hasChoice(0)) button("Выход", 736.f, 766.f, 120.f, 0, true, false, 30.f);
-        if (stage == ViewStage::Battle) {
-            text(utf8("Пробел — следующий ход · A — автобой"), 26.f, 770.f, 13, muted);
+        if (waitingForTurn && !enteringNumber) {
+            button("Следующий ход", 24.f, 708.f, 220.f, nextAction, true, true);
+            button(automatic ? "Автобой: вкл." : "Автобой: выкл.",
+                   260.f, 708.f, 210.f, autoAction);
+            button("В главное меню", 486.f, 708.f, 210.f, 0);
+            text(utf8("Enter / пробел — ход · A — переключить режим"), 26.f, 770.f, 13, muted);
+        } else {
+            for (std::size_t index = 0; index < choices.size(); ++index) {
+                const auto& choice = choices[index];
+                button(choice.label, 24.f + static_cast<float>(index % 4) * 208.f,
+                       706.f + static_cast<float>(index / 4) * 44.f, 196.f,
+                       static_cast<int>(choice.value), choice.enabled, index == 0, 38.f);
+            }
         }
         if (!result.empty()) {
             text(elide(utf8(result), 798.f, 19), 28.f, 674.f, 19,
                  winner == 0 ? blue : winner == 1 ? red : foreground);
         } else {
-            text(utf8(stage == ViewStage::Recruitment ? "«К бою» выполняет первый ход." :
-                     "Полоска показывает текущее HP / максимальное HP."), 28.f, 676.f, 13, muted);
+            text(utf8("Полоска показывает текущее HP / максимальное HP."), 28.f, 676.f, 13, muted);
         }
 
         if (enteringNumber) {
@@ -339,6 +381,9 @@ struct SfmlView::Impl {
                     window.close();
                     throw ViewClosed{};
                 }
+                if (handoffTeam >= 0 && key->code == sf::Keyboard::Key::Enter) {
+                    return submitAction;
+                }
                 if (enteringNumber) {
                     if (key->control && key->code == sf::Keyboard::Key::A) selectAll = true;
                     if (key->code == sf::Keyboard::Key::Backspace) {
@@ -348,14 +393,15 @@ struct SfmlView::Impl {
                     }
                     if (key->code == sf::Keyboard::Key::Enter) return submitAction;
                 } else {
-                    if (waitingForTurn && key->code == sf::Keyboard::Key::Space) return nextAction;
+                    if (waitingForTurn && (key->code == sf::Keyboard::Key::Space ||
+                                           key->code == sf::Keyboard::Key::Enter)) return nextAction;
                     if (hasChoice(1) && key->code == sf::Keyboard::Key::Enter) return 1;
-                    if ((waitingForTurn || stage == ViewStage::Recruitment) &&
+                    if (waitingForTurn &&
                         key->code == sf::Keyboard::Key::A) return autoAction;
                 }
             }
             if (const auto* wheel = event->getIf<sf::Event::MouseWheelScrolled>()) {
-                if (enteringNumber) continue;
+                if (enteringNumber || handoffTeam >= 0) continue;
                 const auto position = window.mapPixelToCoords(wheel->position, camera);
                 if (position.x >= 880.f) {
                     logOffset += wheel->delta > 0 ? 3 : -3;
@@ -376,11 +422,6 @@ struct SfmlView::Impl {
     }
 
     bool handleNavigation(int action) {
-        if (action == autoAction) {
-            automatic = !automatic;
-            autoClock.restart();
-            return true;
-        }
         if (action >= 200 && action <= 203) {
             shiftUnits((action - 200) / 2, action % 2 == 0 ? -1 : 1);
             return true;
@@ -388,18 +429,26 @@ struct SfmlView::Impl {
         return false;
     }
 
-    void waitForNextTurn() {
+    TurnAction waitForTurn(BattleMode mode) {
         waitingForTurn = true;
+        automatic = mode == BattleMode::Automatic;
         autoClock.restart();
+        TurnAction outcome = TurnAction::Next;
         while (true) {
             draw();
             if (const auto action = pollAction()) {
                 if (*action == nextAction) break;
+                if (*action == 0) { outcome = TurnAction::Exit; break; }
+                if (*action == autoAction) {
+                    outcome = automatic ? TurnAction::Manual : TurnAction::Automatic;
+                    break;
+                }
                 handleNavigation(*action);
             }
             if (automatic && autoClock.getElapsedTime().asMilliseconds() >= 550) break;
         }
         waitingForTurn = false;
+        return outcome;
     }
 };
 
@@ -409,9 +458,9 @@ SfmlView::~SfmlView() = default;
 void SfmlView::setStage(ViewStage stage) {
     impl_->stage = stage;
     impl_->choices.clear();
+    impl_->recruiting = false;
     if (stage == ViewStage::Setup) {
         impl_->snapshot = {};
-        impl_->log.clear();
         impl_->logOffset = 0;
         impl_->automatic = false;
         impl_->result.clear();
@@ -466,11 +515,39 @@ void SfmlView::message(const std::string& text) { impl_->appendLog(text); }
 
 void SfmlView::showArmies(const BattleSnapshot& snapshot) {
     impl_->snapshot = snapshot;
-    if (impl_->stage == ViewStage::Battle) {
-        ++impl_->turn;
-        if (!snapshot.finished) impl_->waitForNextTurn();
-        else impl_->draw();
+    impl_->recruiting = false;
+    impl_->draw();
+}
+
+void SfmlView::showRecruitment(const RecruitmentSnapshot& snapshot) {
+    impl_->recruitment = snapshot;
+    impl_->snapshot.armies = snapshot.armies;
+    impl_->recruiting = true;
+}
+
+void SfmlView::setBattleProgress(int turn, BattleMode mode) {
+    impl_->turn = turn;
+    impl_->automatic = mode == BattleMode::Automatic;
+}
+
+TurnAction SfmlView::waitForTurn(BattleMode mode) { return impl_->waitForTurn(mode); }
+
+bool SfmlView::handoff(int team) {
+    impl_->snapshot = {};
+    impl_->recruitment = {};
+    impl_->log.clear();
+    impl_->logOffset = 0;
+    impl_->choices.clear();
+    impl_->handoffTeam = team;
+    while (true) {
+        impl_->draw();
+        if (const auto action = impl_->pollAction()) {
+            if (*action == 0) throw ViewClosed{};
+            if (*action == submitAction) break;
+        }
     }
+    impl_->handoffTeam = -1;
+    return true;
 }
 
 void SfmlView::showResult(int winner, const std::string& text) {

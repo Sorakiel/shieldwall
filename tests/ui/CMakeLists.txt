@@ -30,13 +30,21 @@ target_include_directories(test_support PUBLIC "${Root}/include")
 
 add_executable(ui_tests UiTests.cpp
     "${Root}/src/EventFormatter.cpp" "${Root}/src/ConsoleUI.cpp"
-    "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp")
+    "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp"
+    "${Root}/include/UserInterface.h")
 target_sources(ui_tests PRIVATE "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp")
 target_link_libraries(ui_tests PRIVATE test_support)
 add_executable(data_tests "${Root}/tests/DataTests.cpp")
 target_link_libraries(data_tests PRIVATE test_support)
 
-foreach(Target test_support ui_tests data_tests)
+add_executable(session_tests SessionTests.cpp
+    "${Root}/src/EventFormatter.cpp" "${Root}/src/ConsoleUI.cpp"
+    "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp"
+    "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp"
+    "${Root}/include/UserInterface.h")
+target_link_libraries(session_tests PRIVATE test_support)
+
+foreach(Target test_support ui_tests data_tests session_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
     else()
@@ -47,4 +55,5 @@ endforeach()
 enable_testing()
 add_test(NAME ui COMMAND ui_tests)
 add_test(NAME data COMMAND data_tests)
-set_tests_properties(ui data PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME session COMMAND session_tests)
+set_tests_properties(ui data session PROPERTIES WORKING_DIRECTORY "${Root}")
