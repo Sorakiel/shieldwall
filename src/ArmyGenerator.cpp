@@ -20,6 +20,10 @@ std::size_t pickIndex(std::mt19937& rng, std::size_t count) {
 
 }  // namespace
 
+std::string ArmyGenerator::randomName(std::mt19937& rng) {
+    return NamePool[pickIndex(rng, NamePoolSize)];
+}
+
 bool ArmyGenerator::canAfford(int spent, int unitCost, int costLimit) {
     return unitCost > 0 && unitCost <= costLimit - spent;
 }
@@ -49,7 +53,7 @@ Army ArmyGenerator::generate(int costLimit, std::mt19937& rng) const {
 
         const UnitSpec& spec = *affordable[pickIndex(rng, affordable.size())];
 
-        std::string name = NamePool[pickIndex(rng, NamePoolSize)];
+        std::string name = randomName(rng);
 
         // Генератор покупает через ту же tryBuy, что и игрок руками
         if (!tryBuy(army, spec, std::move(name), costLimit)) {

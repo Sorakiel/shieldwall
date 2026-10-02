@@ -7,12 +7,6 @@
 #include "Army.h"
 #include "UnitCatalog.h"
 
-// Юнит в том виде, в каком он вошёл в бой: имя плюс характеристики.
-struct UnitRecord {
-    UnitSpec spec;
-    std::string name;
-};
-
 // Всё, что нужно для восстановления боя. Снимков hp нет намеренно: бой
 // проигрывается заново с тем же seed, поэтому файл мал, а результат совпадает.
 struct SaveData {

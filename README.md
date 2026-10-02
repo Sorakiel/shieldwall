@@ -24,7 +24,7 @@ cmake --build build
 
 ## Что сейчас работает, а что нет
 
-- Работает: файл с характеристиками юнитов, генерация армий по лимиту цены, меню,
+- Работает: файл с характеристиками юнитов, генерация армий по лимиту цены, ручная закупка (логика в `ArmyBuilder`, экрана в меню пока нет), меню,
   вывод строёв и журнала, сохранения (код есть, в меню пока не подключены).
 - Не готово: само ядро боя (`Unit.cpp`, `Army.cpp`, `BattleEngine.cpp`). Пока вместо него
   стоят заглушки из `tests/stubs/`, поэтому бой идёт без настоящих правил и без строк ударов
@@ -51,7 +51,7 @@ sh tests/run_data_tests.sh
 | Часть | Кто | Файлы |
 |---|---|---|
 | Ядро боя | Ксюша | `Unit.cpp`, `Army.cpp`, `BattleEngine.cpp`, `TargetSelector.*` |
-| Армии и данные | Никита | `data/units.txt`, `UnitCatalog.*`, `UnitFactory.*`, `ArmyGenerator.*`, `SaveService.*`, `BattleReplay.*` |
+| Армии и данные | Никита | `data/units.txt`, `UnitCatalog.*`, `UnitFactory.*`, `ArmyGenerator.*`, `ArmyBuilder.*`, `SaveService.*`, `BattleReplay.*` |
 | Оболочка и логи | Коля | `EventFormatter.*`, `ConsoleUI.*`, `Menu.*`, `BattleRunner.*`, `main.cpp` |
 
 Общие заголовки `Unit.h`, `Army.h`, `BattleEngine.h`, `Event.h` не меняем без согласования в чате,
