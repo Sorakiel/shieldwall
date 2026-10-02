@@ -7,7 +7,10 @@
 #include "ArmyBuilder.h"
 #include "ArmyGenerator.h"
 #include "BattleReplay.h"
+#include <chrono>
+#include <fstream>
 #include "SaveService.h"
+#include "SaveSlots.h"
 #include "UnitCatalog.h"
 #include "UnitFactory.h"
 
@@ -265,6 +268,51 @@ void testSavePhases() {
     CHECK(over.engine->finished() && over.turn == turns);
 }
 
+void testSaveSlots() {
+    namespace fs = std::filesystem;
+    fs::path dir = fs::temp_directory_path() / "shieldwall_slots";
+    fs::remove_all(dir);
+    std::string d = dir.string();
+
+    // Папки ещё нет: список пуст, а не ошибка
+    CHECK(SaveSlots::list(d).empty());
+    CHECK(SaveSlots::suggestName(d) == "save-1");
+
+    SaveData battle = makeSave(1, 5);
+    SaveData result = makeSave(2, 9);
+    result.phase = SavePhase::Result;
+    SaveService::saveToFile(battle, SaveSlots::pathFor(d, "бой"));
+    SaveService::saveToFile(result, SaveSlots::pathFor(d, "save-1"));
+    SaveService::saveToFile(makeSave(3, 0), SaveSlots::autosavePath(d));
+    std::ofstream(dir / "broken.txt") << "мусор\n";
+    std::ofstream(dir / "notes.md") << "не сохранение\n";
+
+    // Порядок: автосохранение первым, дальше от новых к старым
+    auto now = fs::file_time_type::clock::now();
+    fs::last_write_time(dir / "save-1.txt", now - std::chrono::hours(1));
+    fs::last_write_time(dir / "бой.txt", now - std::chrono::hours(2));
+    fs::last_write_time(dir / "broken.txt", now - std::chrono::hours(3));
+    auto list = SaveSlots::list(d);
+    CHECK(list.size() == 4);   // notes.md не в счёт
+    CHECK(list[0].name == "autosave" && list[1].name == "save-1");
+    CHECK(list[2].name == "бой" && list[3].name == "broken");
+
+    CHECK(list[1].valid && list[1].phase == SavePhase::Result && list[1].turn == 9);
+    CHECK(list[1].costLimit == 120 && list[1].seed == 2);
+    CHECK(list[2].valid && list[2].phase == SavePhase::Battle && list[2].turn == 5);
+    CHECK(!list[3].valid && contains(list[3].error, "broken.txt"));   // битый не роняет список
+
+    CHECK(SaveSlots::suggestName(d) == "save-2");
+    fs::remove_all(dir);
+
+    // Имена: безопасные проходят, пути и зарезервированные нет
+    CHECK(SaveSlots::pathFor(d, "Слот 1").size() > 0);
+    for (std::string bad : std::vector<std::string>{"", " x", "x ", ".x", "x.", "../x", "a/b", "a\\b", "a:b", "a*b", "con", "COM3",
+                            "autosave", std::string(65, 'a')}) {
+        CHECK(!errorOf([&] { SaveSlots::pathFor(d, bad); }).empty());
+    }
+}
+
 void testReplayRestoresSamePicture() {
     SaveData data = makeSave(42, 0);
     BattleSession original = BattleReplay::replay(data);
@@ -301,6 +349,7 @@ int main() {
     testSaveRoundTrip();
     testBrokenSave();
     testSavePhases();
+    testSaveSlots();
     testReplayRestoresSamePicture();
 
     std::cout << (failures == 0 ? "все тесты пройдены\n" : "есть провалы\n");
