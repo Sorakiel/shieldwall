@@ -9,7 +9,7 @@
 
 enum class ViewStage { Setup, Recruitment, Battle, Result };
 enum class BattleMode { Automatic, Manual };
-enum class TurnAction { Next, Automatic, Manual, Exit };
+enum class TurnAction { Next, Automatic, Manual, Exit, Save };
 
 struct UnitSnapshot {
     UnitKind kind;
@@ -34,6 +34,7 @@ struct MenuChoice {
     std::uint32_t value;
     std::string label;
     bool enabled = true;
+    bool escapeCancel = false;
 };
 
 struct RecruitmentOffer {
@@ -73,6 +74,9 @@ public:
         BattleSnapshot frame;
         frame.armies = snapshot.armies;
         showArmies(frame);
+    }
+    virtual std::optional<std::string> readText(const std::string&, std::size_t) {
+        return std::nullopt;
     }
     virtual std::optional<std::uint32_t> readNumber(const std::string& prompt,
         std::uint32_t min, std::uint32_t max) = 0;

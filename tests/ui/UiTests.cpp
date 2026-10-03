@@ -98,7 +98,7 @@ void testMenu() {
     const std::string first = menuOutput(script, catalog);
     CHECK(first == menuOutput(script, catalog));
     CHECK(contains(first, "Введите целое число от 10"));
-    CHECK(contains(first, "Введите целое число от 0 до 4"));
+    CHECK(contains(first, "Выберите доступный пункт меню"));
     CHECK(contains(first, "Уборка завершена"));
     CHECK(contains(first, "Итог: победили"));
     CHECK(contains(first, "Новая партия"));

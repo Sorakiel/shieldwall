@@ -46,9 +46,19 @@ add_executable(session_tests SessionTests.cpp
     "${Root}/include/UserInterface.h")
 target_link_libraries(session_tests PRIVATE test_support)
 
-foreach(Target test_support ui_tests data_tests session_tests)
+add_executable(save_ui_tests SaveUiTests.cpp
+    "${Root}/src/EventFormatter.cpp" "${Root}/src/ConsoleUI.cpp"
+    "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp"
+    "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp"
+    "${Root}/src/TextInput.cpp")
+target_link_libraries(save_ui_tests PRIVATE test_support)
+
+foreach(Target test_support ui_tests data_tests session_tests save_ui_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
+        if(NOT Target STREQUAL "test_support")
+            target_sources(${Target} PRIVATE "${Root}/src/WindowsUtf8.manifest")
+        endif()
     else()
         target_compile_options(${Target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
@@ -58,4 +68,5 @@ enable_testing()
 add_test(NAME ui COMMAND ui_tests)
 add_test(NAME data COMMAND data_tests)
 add_test(NAME session COMMAND session_tests)
-set_tests_properties(ui data session PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME save_ui COMMAND save_ui_tests)
+set_tests_properties(ui data session save_ui PROPERTIES WORKING_DIRECTORY "${Root}")

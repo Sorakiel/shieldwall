@@ -10,6 +10,8 @@ public:
     virtual ~UserInterface() = default;
     virtual void setStage(ViewStage stage) = 0;
     virtual void setBattleProgress(int turn, BattleMode mode) = 0;
+    virtual std::optional<std::string> readText(const std::string& prompt,
+        std::size_t maxBytes) = 0;
     virtual std::optional<std::uint32_t> readNumber(const std::string& prompt,
         std::uint32_t min, std::uint32_t max) = 0;
     virtual std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) = 0;

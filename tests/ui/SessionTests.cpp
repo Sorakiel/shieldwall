@@ -163,7 +163,7 @@ void testRecruitmentResume(const UnitCatalog& catalog) {
     CHECK(partial.phase == SavePhase::Recruitment && partial.turn == 0);
     CHECK(partial.armyA.size() == 1 && partial.armyB.empty());
     ScriptView second;
-    second.actions = {2, 2, 1, 2, 2, 30, 2, 1, 30, 0};
+    second.actions = {2, 1, 2, 1, 2, 2, 30, 2, 1, 30, 0};
     ConsoleUI secondUi(second);
     Menu(secondUi, catalog, file.path).run();
     const SaveData completed = SaveService::loadFromFile(file.path);
@@ -179,7 +179,7 @@ void testBattleResumeAndResult(const UnitCatalog& catalog) {
     original.turn = 3;
     SaveService::saveToFile(original, file.path);
     ScriptView view;
-    view.actions = {2, 2, 0};
+    view.actions = {2, 1, 2, 0};
     view.turns = {TurnAction::Next, TurnAction::Exit};
     std::vector<int> observedTurns;
     view.beforeTurn = [&] { observedTurns.push_back(SaveService::loadFromFile(file.path).turn); };
@@ -206,7 +206,7 @@ void testBattleResumeAndResult(const UnitCatalog& catalog) {
     result.turn = expected.turn;
     SaveService::saveToFile(result, file.path);
     ScriptView loadedResult;
-    loadedResult.actions = {2, 0};
+    loadedResult.actions = {2, 1, 0};
     loadedResult.turns = {TurnAction::Next};
     ConsoleUI resultUi(loadedResult);
     Menu(resultUi, catalog, file.path).run();
@@ -219,10 +219,10 @@ void testBadLoadPreservesFile(const UnitCatalog& catalog) {
     SaveFile file;
     { std::ofstream out(file.path); out << "damaged-save\n"; }
     ScriptView view;
-    view.actions = {2, 0};
+    view.actions = {2, 0, 0};
     ConsoleUI ui(view);
     Menu(ui, catalog, file.path).run();
-    CHECK(view.hasMessage("Загрузка:"));
+    CHECK(view.hasMessage("Повреждён:"));
     CHECK(view.hasMessage("строка 1"));
     std::ifstream input(file.path);
     std::string line; std::getline(input, line);
@@ -233,7 +233,7 @@ void testBadLoadPreservesFile(const UnitCatalog& catalog) {
     invalidResult.phase = SavePhase::Result;
     SaveService::saveToFile(invalidResult, file.path);
     ScriptView invalid;
-    invalid.actions = {2, 0};
+    invalid.actions = {2, 1, 0};
     ConsoleUI invalidUi(invalid);
     Menu(invalidUi, catalog, file.path).run();
     CHECK(invalid.hasMessage("незавершённый бой"));
@@ -289,7 +289,7 @@ void testClosingViewKeepsCompletedTurn(const UnitCatalog& catalog) {
     SaveData saved = initialBattle(catalog);
     SaveService::saveToFile(saved, file.path);
     ScriptView view;
-    view.actions = {2, 2};
+    view.actions = {2, 1, 2};
     view.turns = {TurnAction::Next};
     view.closeAtFrame = 2;
     ConsoleUI ui(view);

@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 #include <limits>
 #include <memory>
 #include <random>
@@ -10,8 +13,36 @@
 #include "BattleReplay.h"
 #include "BattleRunner.h"
 #include "EventFormatter.h"
+#include "SaveSlots.h"
 
 namespace {
+
+constexpr std::size_t savesPerPage = 6;
+
+std::string foldAscii(std::string value) {
+    for (auto& character : value) if (character >= 'A' && character <= 'Z') character += 'a' - 'A';
+    return value;
+}
+
+std::string saveLabel(const SaveSummary& summary) {
+    const std::string name = summary.name == SaveSlots::AutosaveName ?
+        "Автосохранение" : std::filesystem::path(summary.name).u8string();
+    if (!summary.valid) return name + "\nПовреждён: " + summary.error;
+    const std::string phase = summary.phase == SavePhase::Recruitment ? "Закупка" :
+        summary.phase == SavePhase::Battle ? "Бой" : "Итог";
+    std::tm date{};
+#ifdef _WIN32
+    const bool hasDate = localtime_s(&date, &summary.modified) == 0;
+#else
+    const bool hasDate = localtime_r(&summary.modified, &date) != nullptr;
+#endif
+    std::ostringstream text;
+    text << name << '\n' << phase << ", ход " << summary.turn
+         << " | лимит " << summary.costLimit << " | seed " << summary.seed << " | ";
+    if (hasDate) text << std::put_time(&date, "%d.%m.%Y %H:%M");
+    else text << "дата неизвестна";
+    return text.str();
+}
 
 using Builders = std::array<std::unique_ptr<ArmyBuilder>, 2>;
 
@@ -83,16 +114,95 @@ void Menu::run() {
     bool privateInput = false;
     bool resultShown = false;
     State state = State::Welcome;
+    State loadReturn = State::Welcome;
+    bool resultSaved = false;
+    const auto parent = std::filesystem::path(autosavePath_).parent_path();
+    const std::string saveDir = parent.empty() ? "." : parent.string();
 
+    auto store = [&](const std::string& path, SavePhase phase, int turn) {
+        SaveData snapshot = data;
+        snapshot.phase = phase;
+        snapshot.turn = turn;
+        SaveService::saveToFile(snapshot, path);
+    };
     auto checkpoint = [&](SavePhase phase, int turn) {
         data.phase = phase;
         data.turn = turn;
         try {
-            SaveService::saveToFile(data, autosavePath_);
+            store(autosavePath_, phase, turn);
         } catch (const DataError& error) {
             ui_.message(std::string("Автосохранение: ") + error.what());
         } catch (const std::filesystem::filesystem_error& error) {
             ui_.message(std::string("Не удалось создать папку автосохранения: ") + error.what());
+        }
+    };
+    auto saveByName = [&](SavePhase phase, int turn) {
+        while (true) {
+            try {
+                const auto suggestion = SaveSlots::suggestName(saveDir);
+                const auto typed = ui_.readText("Имя сохранения [" + suggestion + "]: ", 64);
+                if (!typed) return;
+                const auto name = typed->empty() ? suggestion : *typed;
+                // SaveSlots проверяет имя; путь из UTF-8 сохраняет кириллицу на Windows.
+                SaveSlots::pathFor(saveDir, name);
+                const auto path = parent / std::filesystem::u8path(name + ".txt");
+                if (foldAscii(name) == SaveSlots::AutosaveName ||
+                    foldAscii(path.filename().u8string()) ==
+                    foldAscii(std::filesystem::path(autosavePath_).filename().u8string())) {
+                    throw DataError("Это имя зарезервировано для автосохранения");
+                }
+                if (std::filesystem::exists(path)) {
+                    std::error_code error;
+                    if (std::filesystem::equivalent(path, autosavePath_, error)) {
+                        throw DataError("Этот файл используется для автосохранения");
+                    }
+                    ui_.message("Сохранение «" + name + "» уже существует.");
+                    const auto choice = ui_.choose({{1, "Перезаписать"}, {0, "Отмена", true, true}});
+                    if (!choice || *choice == 0) return;
+                }
+                store(path.string(), phase, turn);
+                ui_.message("Сохранено: " + name + " (ход " + std::to_string(turn) + ").");
+                return;
+            } catch (const DataError& error) {
+                ui_.message(std::string("Не сохранено: ") + error.what());
+            } catch (const std::filesystem::filesystem_error& error) {
+                ui_.message(std::string("Не сохранено: ") + error.what());
+                return;
+            }
+        }
+    };
+    auto selectSave = [&]() -> std::optional<std::string> {
+        const auto saves = SaveSlots::list(saveDir);
+        if (saves.empty()) {
+            ui_.message("Сохранений нет.");
+            return std::nullopt;
+        }
+        const auto nextPage = static_cast<std::uint32_t>(saves.size() + 1);
+        const auto previousPage = nextPage + 1;
+        std::size_t page = 0;
+        while (true) {
+            ui_.message("Сохранения — страница " + std::to_string(page + 1) + " из " +
+                        std::to_string((saves.size() + savesPerPage - 1) / savesPerPage) + ".");
+            std::vector<MenuChoice> choices;
+            const auto end = std::min(saves.size(), (page + 1) * savesPerPage);
+            for (std::size_t index = page * savesPerPage; index < end; ++index) {
+                const auto label = saveLabel(saves[index]);
+                choices.push_back({static_cast<std::uint32_t>(index + 1), label, saves[index].valid});
+                if (!saves[index].valid) ui_.message(label);
+            }
+            choices.push_back({previousPage, "Назад по страницам", page > 0});
+            choices.push_back({nextPage, "Далее", end < saves.size()});
+            choices.push_back({0, "Отмена", true, true});
+            const auto action = ui_.choose(choices);
+            if (!action || *action == 0) return std::nullopt;
+            if (*action == nextPage) {
+                if (end < saves.size()) ++page;
+            } else if (*action == previousPage) {
+                if (page > 0) --page;
+            } else if (*action <= saves.size() && *action > page * savesPerPage &&
+                       *action <= end && saves[*action - 1].valid) {
+                return saves[*action - 1].path;
+            }
         }
     };
     auto saveRecruitment = [&] {
@@ -119,9 +229,10 @@ void Menu::run() {
         switch (state) {
         case State::Welcome: {
             ui_.setStage(ViewStage::Setup);
-            ui_.message("Shieldwall — новая партия или продолжение автосохранения.");
+            ui_.message("Shieldwall — новая партия или загрузка сохранения.");
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}});
             if (!choice || *choice == 0) return;
+            loadReturn = State::Welcome;
             state = *choice == 2 ? State::Load : State::Setup;
             break;
         }
@@ -142,6 +253,7 @@ void Menu::run() {
             builders[0] = std::make_unique<ArmyBuilder>(catalog_, data.costLimit);
             builders[1] = std::make_unique<ArmyBuilder>(catalog_, data.costLimit);
             resultShown = false;
+            resultSaved = false;
             saveRecruitment();
             state = State::Recruitment;
             break;
@@ -178,10 +290,17 @@ void Menu::run() {
                     choices.push_back({20, "Убрать бойца", hasUnits});
                     choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
                     choices.push_back({30, "Армия готова", hasUnits});
+                    choices.push_back({40, "Сохранить"});
                     choices.push_back({0, "В главное меню"});
                     const auto choice = ui_.choose(choices);
                     if (!choice) return;
                     if (*choice == 0) { completed = false; break; }
+                    if (*choice == 40) {
+                        data.armyA = builders[0]->units();
+                        data.armyB = builders[1]->units();
+                        saveByName(SavePhase::Recruitment, 0);
+                        continue;
+                    }
                     if (*choice == 30) {
                         if (!hasUnits) { ui_.message("Сначала купите хотя бы одного бойца."); continue; }
                         editing = false;
@@ -227,27 +346,43 @@ void Menu::run() {
                         std::to_string(data.seed) + ". Обе армии готовы.");
             ui_.showArmies(*session.armyA, *session.armyB);
             const auto choice = ui_.choose({{1, "К бою"}, {2, "Изменить армии"},
-                                            {3, "Настройки"}, {4, "Загрузить"}, {0, "Выход"}});
+                                            {3, "Настройки"}, {4, "Загрузить"},
+                                            {40, "Сохранить"}, {0, "Выход"}});
             if (!choice || *choice == 0) return;
+            if (*choice == 40) { saveByName(SavePhase::Battle, 0); break; }
             if (*choice == 2) {
                 clearSession(session);
                 saveRecruitment();
                 state = State::Recruitment;
             } else if (*choice == 3) state = State::Setup;
-            else if (*choice == 4) state = State::Load;
+            else if (*choice == 4) { loadReturn = State::Ready; state = State::Load; }
             else state = State::Battle;
             break;
         }
         case State::Load: {
             try {
-                SaveData loaded = SaveService::loadFromFile(autosavePath_);
+                const auto path = selectSave();
+                if (!path) { state = loadReturn; break; }
+                if (loadReturn == State::Ready || loadReturn == State::Result) {
+                    const auto confirm = ui_.choose({{1, "Заменить текущую партию"},
+                                                     {0, "Отмена", true, true}});
+                    if (!confirm || *confirm == 0) { state = loadReturn; break; }
+                }
+                SaveData loaded = SaveService::loadFromFile(*path);
                 if (loaded.phase == SavePhase::Recruitment) {
                     Builders restored;
                     restored[0] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
                         catalog_, loaded.costLimit, loaded.armyA));
                     restored[1] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
                         catalog_, loaded.costLimit, loaded.armyB));
-                    if (!selectMode() || !selectInput()) return;
+                    const auto oldMode = mode;
+                    const auto oldInput = privateInput;
+                    if (!selectMode() || !selectInput()) {
+                        mode = oldMode;
+                        privateInput = oldInput;
+                        state = loadReturn;
+                        break;
+                    }
                     clearSession(session);
                     builders = std::move(restored);
                     state = State::Recruitment;
@@ -259,7 +394,10 @@ void Menu::run() {
                     if (loaded.phase == SavePhase::Result && !restored.engine->finished()) {
                         throw DataError("сохранение результата содержит незавершённый бой");
                     }
-                    if (!restored.engine->finished() && !selectMode()) return;
+                    if (!restored.engine->finished() && !selectMode()) {
+                        state = loadReturn;
+                        break;
+                    }
                     clearSession(session);
                     session = std::move(restored);
                     state = session.engine->finished() ? State::Result : State::Battle;
@@ -268,20 +406,22 @@ void Menu::run() {
                 armyRng.seed(data.seed);
                 logRng.seed(data.seed);
                 resultShown = false;
-                ui_.message("Автосохранение загружено. Сыграно ходов: " + std::to_string(data.turn));
+                resultSaved = false;
+                ui_.message("Сохранение загружено. Сыграно ходов: " + std::to_string(data.turn));
             } catch (const DataError& error) {
                 ui_.message(std::string("Загрузка: ") + error.what());
-                state = State::Welcome;
+                state = loadReturn;
             } catch (const std::filesystem::filesystem_error& error) {
                 ui_.message(std::string("Загрузка: ") + error.what());
-                state = State::Welcome;
+                state = loadReturn;
             }
             break;
         }
         case State::Battle: {
             ui_.setStage(ViewStage::Battle);
             const auto outcome = BattleRunner(ui_).run(*session.engine, *session.armyA, *session.armyB,
-                logRng, mode, session.turn, [&](int turn) { checkpoint(SavePhase::Battle, turn); });
+                logRng, mode, session.turn, [&](int turn) { checkpoint(SavePhase::Battle, turn); },
+                [&](int turn) { saveByName(SavePhase::Battle, turn); });
             session.turn = outcome.turn;
             mode = outcome.mode;
             resultShown = outcome.finished;
@@ -289,7 +429,10 @@ void Menu::run() {
             break;
         }
         case State::Result: {
-            checkpoint(SavePhase::Result, session.turn);
+            if (!resultSaved) {
+                checkpoint(SavePhase::Result, session.turn);
+                resultSaved = true;
+            }
             ui_.setStage(ViewStage::Result);
             ui_.setBattleProgress(session.turn, mode);
             if (!resultShown) {
@@ -297,8 +440,11 @@ void Menu::run() {
                 ui_.showResult(session.engine->winner());
                 resultShown = true;
             }
-            const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}});
+            const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"},
+                                            {40, "Сохранить"}, {0, "Выход"}});
             if (!choice || *choice == 0) return;
+            if (*choice == 40) { saveByName(SavePhase::Result, session.turn); break; }
+            loadReturn = State::Result;
             state = *choice == 1 ? State::Setup : State::Load;
             break;
         }
