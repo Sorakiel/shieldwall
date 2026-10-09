@@ -35,11 +35,31 @@ bool inputReady() {
 
 std::optional<std::string> ConsoleView::readText(const std::string& prompt, std::size_t maxBytes) {
     std::string line;
+    message("/cancel — Отмена; пустое имя — предложенное имя сохранения.");
     while (true) {
         out_ << prompt << std::flush;
         if (!std::getline(in_, line)) return std::nullopt;
+        if (line == "/cancel") return std::nullopt;
         if (line.size() <= maxBytes) return line;
         message("Имя слишком длинное: максимум " + std::to_string(maxBytes) + " байт UTF-8.");
+    }
+}
+
+void ConsoleView::clearDisplay() {
+    out_ << "\033[2J\033[H\033[3J" << std::flush;
+}
+
+std::optional<std::uint32_t> ConsoleView::readNumberCancelable(const std::string& prompt,
+    std::uint32_t min, std::uint32_t max, NumberCancel cancel) {
+    message(cancel == NumberCancel::Dialog ? "0 — Отмена" : "/menu — В главное меню");
+    std::string line;
+    while (true) {
+        out_ << prompt << std::flush;
+        if (!std::getline(in_, line)) return std::nullopt;
+        if (cancel == NumberCancel::MainMenu && line == "/menu") return std::nullopt;
+        if (cancel == NumberCancel::Dialog && parseNumber(line, 0, 0)) return std::nullopt;
+        if (const auto value = parseNumber(line, min, max)) return value;
+        message("Введите целое число от " + std::to_string(min) + " до " + std::to_string(max) + ".");
     }
 }
 
