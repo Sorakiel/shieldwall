@@ -121,8 +121,7 @@ int main(int argc, char* argv[]) {
             ui.showArmies(a, b);
             ui.message("Демонстрация вида: армии и события показаны как отдельные примеры.");
             ui.showEvents(demoEvents(), logRng);
-            ui.choose({{0, "В главное меню", true, true}});
-            Menu(ui, catalog).run();
+            ui.choose({{0, "Выход"}});
         } else {
             Menu(ui, catalog).run();
         }
