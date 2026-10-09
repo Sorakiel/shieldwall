@@ -54,7 +54,16 @@ public:
     std::vector<int> progress;
     std::vector<BattleMode> modes;
     std::function<void()> beforeText, afterText, beforeChoice;
+    ViewStage stage = ViewStage::MainMenu;
+    void setStage(ViewStage value) override { stage = value; }
     bool textWasRead = false;
+    bool displayedArmy = false, displayedResult = false;
+    std::vector<bool> cleanModeScreens;
+    void clearDisplay() override { displayedArmy = displayedResult = false; }
+    void showResult(int, const std::string& text) override {
+        displayedResult = true;
+        message(text);
+    }
     std::optional<std::uint32_t> readNumber(const std::string&, std::uint32_t, std::uint32_t) override {
         if (numbers.empty()) return std::nullopt;
         const auto number = numbers.front(); numbers.pop_front(); return number;
@@ -69,7 +78,13 @@ public:
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override {
         if (textWasRead && afterText) afterText();
         if (beforeChoice) beforeChoice();
+        for (const auto& choice : choices) {
+            if (choice.label == "Выход") CHECK(stage == ViewStage::MainMenu);
+        }
         menus.push_back(choices);
+        if (!choices.empty() && choices.front().label == "Автобой") {
+            cleanModeScreens.push_back(!displayedArmy && !displayedResult);
+        }
         if (actions.empty()) return std::nullopt;
         const auto value = actions.front(); actions.pop_front();
         bool enabled = false;
@@ -86,7 +101,7 @@ public:
         const auto action = turns.front(); turns.pop_front(); return action;
     }
     void message(const std::string& text) override { messages.push_back(text); }
-    void showArmies(const BattleSnapshot&) override {}
+    void showArmies(const BattleSnapshot&) override { displayedArmy = true; }
     bool hasMessage(const std::string& part) const {
         for (const auto& text : messages) if (text.find(part) != std::string::npos) return true;
         return false;
@@ -340,6 +355,93 @@ void testReplacingAndCancellingParty(const UnitCatalog& catalog) {
     }
 }
 
+void testDeleteSaves(const UnitCatalog& catalog) {
+    for (const bool confirm : {false, true}) {
+        SaveDirectory dir;
+        SaveService::saveToFile(battle(catalog), dir.named("good").string());
+        std::ofstream(dir.named("broken")) << "invalid";
+        const auto list = SaveSlots::list(dir.path.string());
+        std::uint32_t broken = 0;
+        for (std::size_t index = 0; index < list.size(); ++index) {
+            if (list[index].name == "broken") broken = static_cast<std::uint32_t>(index + 1);
+        }
+        CHECK(broken != 0);
+        ScriptView view;
+        // Two saves: toggleDelete = count + 3 = 5. Damaged saves can be deleted.
+        view.actions = {2, 5, broken, confirm ? 1u : 0u, 0, 0};
+        run(view, catalog, dir);
+        CHECK(fs::exists(dir.named("broken")) == !confirm);
+        CHECK(fs::exists(dir.named("good")));
+        CHECK(view.hasMessage("Сохранение удалено") == confirm);
+    }
+    {
+        SaveDirectory dir;
+        SaveService::saveToFile(battle(catalog), dir.autosave());
+        ScriptView view; view.actions = {2, 4, 1, 1, 0};
+        run(view, catalog, dir);
+        CHECK(!fs::exists(dir.autosave()));
+        CHECK(view.hasMessage("Сохранений нет"));
+    }
+    {
+        SaveDirectory dir;
+        for (int index = 0; index < 7; ++index) {
+            SaveService::saveToFile(battle(catalog), dir.named("slot-" + std::to_string(index)).string());
+        }
+        const auto list = SaveSlots::list(dir.path.string());
+        const auto last = list.back().path;
+        ScriptView view;
+        // Seven saves: next = 8, delete mode = 10; remove only row on final page.
+        view.actions = {2, 8, 10, 7, 1, 0, 0};
+        run(view, catalog, dir);
+        CHECK(!fs::exists(last));
+        CHECK(SaveSlots::list(dir.path.string()).size() == 6);
+        CHECK(view.hasMessage("страница 1 из 1"));
+    }
+}
+
+void testLoadClearsPreviousDisplay(const UnitCatalog& catalog) {
+    for (const auto phase : {SavePhase::Recruitment, SavePhase::Battle}) {
+        SaveDirectory dir;
+        auto saved = battle(catalog);
+        saved.phase = phase;
+        SaveService::saveToFile(saved, dir.named("other").string());
+        ScriptView view; ready(view, 1);
+        // Finish current game, then load the other file and confirm replacement.
+        view.actions.insert(view.actions.end(), {1, 2, 2, 1, 2});
+        if (phase == SavePhase::Recruitment) {
+            view.actions.insert(view.actions.end(), {1, 30, 30, 0, 0});
+        } else {
+            // Auto finish old battle, then exit the loaded battle immediately.
+            view.actions.push_back(0);
+        }
+        if (phase == SavePhase::Battle) {
+            view.beforeChoice = [&] {
+                if (view.displayedResult) view.turns = {TurnAction::Exit};
+            };
+        }
+        run(view, catalog, dir);
+        CHECK(view.cleanModeScreens.size() == 2);
+        for (const bool clean : view.cleanModeScreens) CHECK(clean);
+        CHECK(view.hasMessage("Сохранение загружено"));
+    }
+}
+
+void testCancelLoadedSettings(const UnitCatalog& catalog) {
+    for (const auto phase : {SavePhase::Recruitment, SavePhase::Battle}) {
+        SaveDirectory dir;
+        auto saved = battle(catalog);
+        saved.phase = phase;
+        SaveService::saveToFile(saved, dir.autosave());
+        const auto original = contents(dir.autosave());
+        ScriptView view; view.actions = {2, 1, 0, 0};
+        run(view, catalog, dir);
+        CHECK(view.actions.empty());
+        CHECK(view.cleanModeScreens.size() == 1 && view.cleanModeScreens.front());
+        CHECK(contents(dir.autosave()) == original);
+        CHECK(view.stage == ViewStage::MainMenu);
+    }
+}
+
 void testUtf8InputAndConsole() {
     TextInput input; input.reset(5);
     CHECK(input.append(U'т') && input.append(U'е') && input.append(U'a'));
@@ -376,6 +478,9 @@ int main() {
         testPaging(catalog);
         testReplacingAndCancellingParty(catalog);
         testUtf8InputAndConsole();
+        testDeleteSaves(catalog);
+        testLoadClearsPreviousDisplay(catalog);
+        testCancelLoadedSettings(catalog);
         std::cout << (failures == 0 ? "All save UI tests passed\n" : "Save UI tests failed\n");
         return failures == 0 ? 0 : 1;
     } catch (const std::exception& error) {

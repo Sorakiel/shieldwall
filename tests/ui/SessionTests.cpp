@@ -284,6 +284,56 @@ void testConsoleControls() {
     CHECK(contains(text.str(), "Выберите доступный пункт"));
 }
 
+void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
+    {
+        std::istringstream input("/menu\n0\n 0 \n2\n/cancel\n0\n");
+        std::ostringstream output;
+        ConsoleUI ui(input, output);
+        CHECK(!ui.readNumberCancelable("Бюджет: ", 10, 100, NumberCancel::MainMenu));
+        CHECK(ui.readNumberCancelable("Seed: ", 0, 100, NumberCancel::MainMenu) == 0u);
+        CHECK(!ui.readNumberCancelable("Позиция: ", 1, 3, NumberCancel::Dialog));
+        CHECK(ui.readNumberCancelable("Позиция: ", 1, 3, NumberCancel::Dialog) == 2u);
+        CHECK(!ui.readText("Имя: ", 64));
+        CHECK(ui.readText("Имя: ", 64) == "0");
+    }
+    for (const auto& script : {"1\n/menu\n0\n", "1\n70\n/menu\n0\n",
+                               "1\n70\n0\n0\n0\n", "1\n70\n0\n2\n0\n0\n"}) {
+        SaveFile file;
+        std::istringstream input(script);
+        std::ostringstream output;
+        ConsoleUI ui(input, output);
+        Menu(ui, catalog, file.path).run();
+        const auto first = output.str().find("Shieldwall — новая партия");
+        CHECK(first != std::string::npos);
+        CHECK(output.str().find("Shieldwall — новая партия", first + 1) != std::string::npos);
+        CHECK(!std::filesystem::exists(file.path));
+    }
+    {
+        SaveFile file;
+        // Cancel remove, and both the source and destination position of move.
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n20\n0\n21\n0\n21\n1\n0\n30\n1\n0\n0\n");
+        std::ostringstream output;
+        ConsoleUI ui(input, output);
+        Menu(ui, catalog, file.path).run();
+        const auto saved = SaveService::loadFromFile(file.path);
+        CHECK(saved.phase == SavePhase::Battle && saved.seed == 0);
+        CHECK(saved.armyA.size() == 2);
+        CHECK(contains(output.str(), "0 — Отмена"));
+        CHECK(contains(output.str(), "В главное меню"));
+    }
+    {
+        SaveFile file;
+        ScriptView view;
+        view.numbers = {70, 42};
+        // Ready -> edit -> confirm each existing army without entering manual recruitment.
+        view.actions = {1, 2, 1, 1, 1, 2, 30, 30, 0, 0};
+        ConsoleUI ui(view);
+        Menu(ui, catalog, file.path).run();
+        CHECK(view.actions.empty());
+        CHECK(SaveService::loadFromFile(file.path).phase == SavePhase::Battle);
+    }
+}
+
 void testClosingViewKeepsCompletedTurn(const UnitCatalog& catalog) {
     SaveFile file;
     SaveData saved = initialBattle(catalog);
@@ -315,6 +365,7 @@ int main() {
     testAutosaveFailureIsReported(catalog);
     testCooperativePrivacy(catalog);
     testConsoleControls();
+    testConsoleCancellationAndNavigation(catalog);
     testClosingViewKeepsCompletedTurn(catalog);
     std::cout << (failures == 0 ? "All session tests passed\n" : "Session tests failed\n");
     return failures == 0 ? 0 : 1;
