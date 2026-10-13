@@ -79,15 +79,20 @@ std::optional<std::uint32_t> ConsoleView::readNumber(const std::string& prompt,
 
 std::optional<std::uint32_t> ConsoleView::choose(const std::vector<MenuChoice>& choices) {
     if (choices.empty()) return std::nullopt;
+    // Display positions are separate from controller action IDs (20, 30, 40, ...).
+    std::vector<const MenuChoice*> numbered;
+    const MenuChoice* zero = nullptr;
     for (const auto& choice : choices) {
-        message(std::to_string(choice.value) + " — " + choice.label +
+        if (choice.value == 0) { zero = &choice; continue; }
+        numbered.push_back(&choice);
+        message(std::to_string(numbered.size()) + " — " + choice.label +
                 (choice.enabled ? "" : " (недоступно)"));
     }
-    const auto limits = std::minmax_element(choices.begin(), choices.end(),
-        [](const MenuChoice& a, const MenuChoice& b) { return a.value < b.value; });
-    while (const auto value = readNumber("> ", limits.first->value, limits.second->value)) {
-        if (std::any_of(choices.begin(), choices.end(),
-            [&](const MenuChoice& choice) { return choice.enabled && choice.value == *value; })) return value;
+    if (zero) message("0 — " + zero->label + (zero->enabled ? "" : " (недоступно)"));
+    while (const auto value = readNumber("> ", zero ? 0u : 1u,
+                                        static_cast<std::uint32_t>(numbered.size()))) {
+        const MenuChoice* choice = *value == 0 ? zero : numbered[*value - 1];
+        if (choice && choice->enabled) return choice->value;
         message("Выберите доступный пункт меню.");
     }
     return std::nullopt;

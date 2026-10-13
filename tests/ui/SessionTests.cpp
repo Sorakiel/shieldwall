@@ -311,7 +311,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
     {
         SaveFile file;
         // Cancel remove, and both the source and destination position of move.
-        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n20\n0\n21\n0\n21\n1\n0\n30\n1\n0\n0\n");
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n4\n0\n5\n0\n5\n1\n0\n6\n1\n0\n0\n");
         std::ostringstream output;
         ConsoleUI ui(input, output);
         Menu(ui, catalog, file.path).run();

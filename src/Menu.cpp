@@ -100,7 +100,7 @@ void clearSession(BattleSession& session) {
 
 }  // namespace
 
-void Menu::run() {
+void Menu::run(const std::vector<std::string>& initialMessages) {
     if (catalog_.specs().empty()) throw DataError("В каталоге нет типов юнитов");
     const auto cheapest = std::min_element(catalog_.specs().begin(), catalog_.specs().end(),
         [](const UnitSpec& a, const UnitSpec& b) { return a.cost < b.cost; });
@@ -116,6 +116,11 @@ void Menu::run() {
     State state = State::Welcome;
     State loadReturn = State::Welcome;
     bool resultSaved = false;
+    std::vector<std::string> pendingMessages = initialMessages;
+    auto showPendingMessages = [&] {
+        for (const auto& text : pendingMessages) ui_.message(text);
+        pendingMessages.clear();
+    };
     const auto parent = std::filesystem::path(autosavePath_).parent_path();
     const std::string saveDir = parent.empty() ? "." : parent.string();
 
@@ -178,7 +183,7 @@ void Menu::run() {
             // Refresh after deletion and keep the last page within the new list.
             const auto saves = SaveSlots::list(saveDir);
             if (saves.empty()) {
-                ui_.message("Сохранений нет.");
+                pendingMessages.push_back("Сохранений нет.");
                 return std::nullopt;
             }
             page = std::min(page, (saves.size() - 1) / savesPerPage);
@@ -261,6 +266,7 @@ void Menu::run() {
             ui_.clearDisplay();
             ui_.setStage(ViewStage::MainMenu);
             ui_.message("Shieldwall — новая партия или загрузка сохранения.");
+            showPendingMessages();
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}});
             if (!choice || *choice == 0) return;
             loadReturn = State::Welcome;
@@ -381,6 +387,7 @@ void Menu::run() {
             ui_.message("Лимит: " + std::to_string(data.costLimit) + ", seed: " +
                         std::to_string(data.seed) + ". Обе армии готовы.");
             ui_.showArmies(*session.armyA, *session.armyB);
+            showPendingMessages();
             const auto choice = ui_.choose({{1, "К бою"}, {2, "Изменить армии"},
                                             {3, "Настройки"}, {4, "Загрузить"},
                                             {40, "Сохранить"}, {0, "В главное меню", true, true}});
@@ -450,10 +457,10 @@ void Menu::run() {
                 resultSaved = false;
                 ui_.message("Сохранение загружено. Сыграно ходов: " + std::to_string(data.turn));
             } catch (const DataError& error) {
-                ui_.message(std::string("Загрузка: ") + error.what());
+                pendingMessages.push_back(std::string("Загрузка: ") + error.what());
                 state = loadReturn;
             } catch (const std::filesystem::filesystem_error& error) {
-                ui_.message(std::string("Загрузка: ") + error.what());
+                pendingMessages.push_back(std::string("Загрузка: ") + error.what());
                 state = loadReturn;
             }
             break;
@@ -481,6 +488,7 @@ void Menu::run() {
                 ui_.showResult(session.engine->winner());
                 resultShown = true;
             }
+            showPendingMessages();
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"},
                                             {40, "Сохранить"}, {0, "В главное меню", true, true}});
             if (!choice) return;
