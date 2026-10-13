@@ -13,6 +13,7 @@
 #include "ConsoleView.h"
 #include "Menu.h"
 #include "SaveSlots.h"
+#include "SaveLocation.h"
 #include "TextInput.h"
 
 namespace {
@@ -50,7 +51,7 @@ public:
     std::deque<std::optional<std::string>> texts;
     std::deque<TurnAction> turns;
     std::vector<std::vector<MenuChoice>> menus;
-    std::vector<std::string> messages;
+    std::vector<std::string> messages, visibleMessages;
     std::vector<int> progress;
     std::vector<BattleMode> modes;
     std::function<void()> beforeText, afterText, beforeChoice;
@@ -59,7 +60,7 @@ public:
     bool textWasRead = false;
     bool displayedArmy = false, displayedResult = false;
     std::vector<bool> cleanModeScreens;
-    void clearDisplay() override { displayedArmy = displayedResult = false; }
+    void clearDisplay() override { displayedArmy = displayedResult = false; visibleMessages.clear(); }
     void showResult(int, const std::string& text) override {
         displayedResult = true;
         message(text);
@@ -100,7 +101,7 @@ public:
         if (turns.empty()) return mode == BattleMode::Automatic ? TurnAction::Next : TurnAction::Exit;
         const auto action = turns.front(); turns.pop_front(); return action;
     }
-    void message(const std::string& text) override { messages.push_back(text); }
+    void message(const std::string& text) override { messages.push_back(text); visibleMessages.push_back(text); }
     void showArmies(const BattleSnapshot&) override { displayedArmy = true; }
     bool hasMessage(const std::string& part) const {
         for (const auto& text : messages) if (text.find(part) != std::string::npos) return true;
@@ -442,6 +443,111 @@ void testCancelLoadedSettings(const UnitCatalog& catalog) {
     }
 }
 
+void testLoadNoticeSurvivesReturn(const UnitCatalog& catalog) {
+    SaveDirectory dir;
+    ScriptView view;
+    view.actions = {2, 0};
+    run(view, catalog, dir);
+    bool visible = false;
+    for (const auto& message : view.visibleMessages) if (message == "Сохранений нет.") visible = true;
+    CHECK(visible);
+    // Match the terminal's last clear, rather than checking erased output history.
+    std::istringstream input("2\n0\n");
+    std::ostringstream output;
+    ConsoleUI ui(input, output);
+    Menu(ui, catalog, dir.autosave()).run();
+    const auto lastClear = output.str().rfind("\033[3J");
+    CHECK(lastClear != std::string::npos);
+    CHECK(output.str().substr(lastClear).find("Сохранений нет.") != std::string::npos);
+    // An invalid result save must show its load error after returning to the menu.
+    auto invalid = battle(catalog);
+    invalid.phase = SavePhase::Result;
+    SaveService::saveToFile(invalid, dir.named("invalid").string());
+    ScriptView failed; failed.actions = {2, 1, 0};
+    run(failed, catalog, dir);
+    visible = false;
+    for (const auto& message : failed.visibleMessages) {
+        if (message.find("незавершённый бой") != std::string::npos) visible = true;
+    }
+    CHECK(visible);
+}
+
+void testSaveLocationAndLegacyImport(const UnitCatalog& catalog) {
+    SaveDirectory fixture;
+    const auto base = fs::absolute(fixture.path);
+    const auto project = base / "project";
+    const auto executable = project / "build" / "Release";
+    const auto firstCwd = base / "first", secondCwd = base / "second";
+    fs::create_directories(executable / "saves");
+    fs::create_directories(firstCwd / "saves");
+    fs::create_directories(secondCwd);
+    fs::create_directories(project / "data");
+    fs::create_directories(project / "saves");
+    std::ofstream(project / "CMakeLists.txt") << "project fixture";
+    std::ofstream(project / "data/units.txt") << "catalog fixture";
+    const auto original = battle(catalog);
+    auto current = original; current.seed = 17;
+    const auto target = executable / "saves";
+    SaveService::saveToFile(current, (target / "autosave.txt").string());
+    const auto before = contents(target / "autosave.txt");
+    SaveService::saveToFile(original, (firstCwd / "saves" / fs::u8path("тест 日本語.txt")).string());
+    std::ofstream(firstCwd / "saves/broken.txt") << "broken legacy file";
+    auto legacy = original; legacy.seed = 99;
+    SaveService::saveToFile(legacy, (project / "saves/autosave.txt").string());
+    const auto sourceBefore = contents(project / "saves/autosave.txt");
+    const auto first = prepareSaveLocation(executable, firstCwd);
+    CHECK(first.directory == target);
+    CHECK(contents(target / "autosave.txt") == before);
+    CHECK(contents(project / "saves/autosave.txt") == sourceBefore);
+    CHECK(!first.messages.empty());
+    const auto list = SaveSlots::list(target.string());
+    CHECK(list.size() == 4);
+    bool broken = false, legacyConflict = false, unicode = false;
+    for (const auto& item : list) {
+        if (item.name == "broken") broken = !item.valid;
+        if (item.name == "legacy-1") legacyConflict = item.valid;
+        if (item.name == "тест 日本語") unicode = item.valid;
+    }
+    CHECK(broken && legacyConflict && unicode);
+    const auto again = prepareSaveLocation(executable, secondCwd);
+    CHECK(again.directory == target && again.messages.empty());
+    CHECK(SaveSlots::list(target.string()).size() == 4);
+    // Import markers prevent deletion from being undone on the next launch.
+    const auto imported = target / fs::u8path("тест 日本語.txt");
+    fs::remove(imported);
+    prepareSaveLocation(executable, firstCwd);
+    CHECK(!fs::exists(imported));
+    CHECK(fs::exists(firstCwd / "saves" / fs::u8path("тест 日本語.txt")));
+    CHECK(contents(target / "autosave.txt") == before);
+    // The fixture alone owns this subtree; cleanup cannot touch real user saves.
+    fs::remove_all(project);
+    fs::remove_all(firstCwd);
+    fs::remove_all(secondCwd);
+}
+
+void testSequentialConsoleMenus() {
+    std::istringstream input("3\n1\n0\n1\n2\n1\n2\n4\n");
+    std::ostringstream output;
+    ConsoleUI ui(input, output);
+    const std::vector<MenuChoice> choices{{1, "Новая партия"}, {2, "Загрузить"},
+                                         {40, "Сохранить"}, {0, "В главное меню"}};
+    CHECK(ui.choose(choices) == 40u);
+    CHECK(ui.choose(choices) == 1u);
+    CHECK(ui.choose(choices) == 0u);
+    const std::vector<MenuChoice> page{{7, "Слот 7"}, {8, "Слот 8"},
+                                      {20, "Далее"}, {0, "Отмена"}};
+    CHECK(ui.choose(page) == 7u);
+    CHECK(ui.choose(page) == 8u);
+    const std::vector<MenuChoice> disabled{{20, "Недоступно", false}, {30, "Готово"},
+                                          {40, "Сохранить"}, {0, "Отмена"}};
+    CHECK(ui.choose(disabled) == 30u); // Disabled position 1 is rejected without changing numbering.
+    // Position 4 is invalid; EOF cancels instead of interpreting old action ID 40.
+    CHECK(!ui.choose(disabled));
+    CHECK(output.str().find("3 — Сохранить") != std::string::npos);
+    CHECK(output.str().find("40 —") == std::string::npos);
+    CHECK(output.str().find("7 — Слот") == std::string::npos);
+}
+
 void testUtf8InputAndConsole() {
     TextInput input; input.reset(5);
     CHECK(input.append(U'т') && input.append(U'е') && input.append(U'a'));
@@ -481,6 +587,9 @@ int main() {
         testDeleteSaves(catalog);
         testLoadClearsPreviousDisplay(catalog);
         testCancelLoadedSettings(catalog);
+        testLoadNoticeSurvivesReturn(catalog);
+        testSaveLocationAndLegacyImport(catalog);
+        testSequentialConsoleMenus();
         std::cout << (failures == 0 ? "All save UI tests passed\n" : "Save UI tests failed\n");
         return failures == 0 ? 0 : 1;
     } catch (const std::exception& error) {

@@ -50,7 +50,7 @@ add_executable(save_ui_tests SaveUiTests.cpp
     "${Root}/src/EventFormatter.cpp" "${Root}/src/ConsoleUI.cpp"
     "${Root}/src/Menu.cpp" "${Root}/src/BattleRunner.cpp"
     "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp"
-    "${Root}/src/TextInput.cpp")
+    "${Root}/src/TextInput.cpp" "${Root}/src/SaveLocation.cpp")
 target_link_libraries(save_ui_tests PRIVATE test_support)
 
 foreach(Target test_support ui_tests data_tests session_tests save_ui_tests)

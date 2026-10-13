@@ -9,7 +9,7 @@ public:
     Menu(UserInterface& ui, const UnitCatalog& catalog,
          std::string autosavePath = "saves/autosave.txt")
         : ui_(ui), catalog_(catalog), autosavePath_(std::move(autosavePath)) {}
-    void run();
+    void run(const std::vector<std::string>& initialMessages = {});
 
 private:
     enum class State { Welcome, Setup, Recruitment, Ready, Load, Battle, Result, Exit };
