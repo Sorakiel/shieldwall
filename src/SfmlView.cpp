@@ -66,6 +66,7 @@ struct SfmlView::Impl {
     int winner = -1;
     bool automatic = false;
     bool enteringNumber = false;
+    NumberCancel numberCancel = NumberCancel::MainMenu;
     bool enteringText = false;
     TextInput textInput;
     bool selectAll = true;
@@ -294,13 +295,16 @@ struct SfmlView::Impl {
     void drawSaveList() {
         buttons.clear();
         rectangle(24.f, 116.f, 832.f, 584.f, panel);
-        text(utf8("Сохранения"), 48.f, 134.f, 26, accent);
+        const bool deleting = std::any_of(choices.begin(), choices.end(), [](const MenuChoice& choice) {
+            return choice.label == "К загрузке";
+        });
+        text(utf8(deleting ? "Удаление сохранений" : "Сохранения"), 48.f, 134.f, 26, accent);
         std::size_t row = 0, navigation = 0;
         for (const auto& choice : choices) {
             const auto split = choice.label.find('\n');
             if (split == std::string::npos) {
-                button(choice.label, 24.f + static_cast<float>(navigation++) * 278.f,
-                       708.f, 266.f, static_cast<int>(choice.value), choice.enabled);
+                button(choice.label, 24.f + static_cast<float>(navigation++) * 208.f,
+                       708.f, 196.f, static_cast<int>(choice.value), choice.enabled);
                 continue;
             }
             const float y = 182.f + static_cast<float>(row++) * 76.f;
@@ -331,13 +335,13 @@ struct SfmlView::Impl {
                  292.f, 330.f, 19, muted);
             text(utf8("Нажмите Enter, когда будете готовы."), 292.f, 374.f, 19);
             button("Продолжить", 292.f, 458.f, 240.f, submitAction, true, true);
-            button("Выход", 552.f, 458.f, 180.f, 0);
             window.display();
             return;
         }
         text("SHIELDWALL", 28.f, 22.f, 32);
         text(utf8("Две армии. Один строй. Каждый ход на виду."), 30.f, 70.f, 15, muted);
-        const std::string phase = stage == ViewStage::Setup ? "Настройка" :
+        const std::string phase = stage == ViewStage::MainMenu ? "Главное меню" :
+            stage == ViewStage::Setup ? "Настройка" :
             stage == ViewStage::Recruitment ? (recruiting ? "Закупка" : "Армии готовы") :
             stage == ViewStage::Battle ? "Ход " + std::to_string(turn) : "Бой завершён";
         rectangle(1066.f, 31.f, 190.f, 42.f, raised);
@@ -369,10 +373,12 @@ struct SfmlView::Impl {
             button("В главное меню", 612.f, 708.f, 244.f, 0);
             text(utf8("Enter / пробел — ход · A — режим · S — сохранить"), 26.f, 770.f, 13, muted);
         } else {
+            const std::size_t columns = choices.size() <= 3 ? choices.size() : 4;
+            const float step = columns == 0 ? 832.f : 832.f / static_cast<float>(columns);
             for (std::size_t index = 0; index < choices.size(); ++index) {
                 const auto& choice = choices[index];
-                button(choice.label, 24.f + static_cast<float>(index % 4) * 208.f,
-                       706.f + static_cast<float>(index / 4) * 44.f, 196.f,
+                button(choice.label, 24.f + static_cast<float>(index % columns) * step,
+                       706.f + static_cast<float>(index / columns) * 44.f, step - 12.f,
                        static_cast<int>(choice.value), choice.enabled, index == 0, 38.f);
             }
         }
@@ -401,8 +407,9 @@ struct SfmlView::Impl {
                  error.empty() ? muted : red);
             button(enteringText ? "Сохранить" : "Продолжить",
                    144.f, 455.f, 210.f, submitAction, true, true);
-            button(enteringText ? "Отмена" : "Выход",
-                   374.f, 455.f, 150.f, enteringText ? cancelAction : 0);
+            const bool cancelDialog = enteringText || numberCancel == NumberCancel::Dialog;
+            button(cancelDialog ? "Отмена" : "В главное меню",
+                   374.f, 455.f, 218.f, cancelAction);
         }
         window.display();
     }
@@ -432,7 +439,7 @@ struct SfmlView::Impl {
             }
             if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
                 if (key->code == sf::Keyboard::Key::Escape) {
-                    if (enteringText) return cancelAction;
+                    if (enteringText || enteringNumber) return cancelAction;
                     if (!enteringNumber && std::any_of(choices.begin(), choices.end(),
                         [](const MenuChoice& choice) {
                             return choice.value == 0 && choice.enabled && choice.escapeCancel;
@@ -530,12 +537,10 @@ void SfmlView::setStage(ViewStage stage) {
     impl_->stage = stage;
     impl_->choices.clear();
     impl_->recruiting = false;
-    if (stage == ViewStage::Setup) {
-        impl_->snapshot = {};
-        impl_->logOffset = 0;
-        impl_->automatic = false;
+    if (stage == ViewStage::MainMenu || stage == ViewStage::Setup) clearDisplay();
+    if (stage != ViewStage::Result) {
         impl_->result.clear();
-        impl_->turn = 0;
+        impl_->winner = -1;
     }
     if (stage == ViewStage::Recruitment) {
         impl_->turn = 0;
@@ -544,9 +549,30 @@ void SfmlView::setStage(ViewStage stage) {
     }
 }
 
+void SfmlView::clearDisplay() {
+    impl_->snapshot = {};
+    impl_->recruitment = {};
+    impl_->recruiting = false;
+    impl_->log.clear();
+    impl_->logOffset = 0;
+    impl_->unitOffsets = {};
+    impl_->choices.clear();
+    impl_->result.clear();
+    impl_->winner = -1;
+    impl_->turn = 0;
+    impl_->automatic = false;
+}
+
+std::optional<std::uint32_t> SfmlView::readNumberCancelable(const std::string& prompt,
+    std::uint32_t min, std::uint32_t max, NumberCancel cancel) {
+    impl_->numberCancel = cancel;
+    return readNumber(prompt, min, max);
+}
+
 std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
                                                 std::uint32_t min, std::uint32_t max) {
     impl_->enteringNumber = true;
+    impl_->window.setKeyRepeatEnabled(true);
     impl_->prompt = prompt;
     impl_->input = std::to_string(std::clamp(min == 0 ? 42u : 120u, min, max));
     impl_->selectAll = true;
@@ -555,10 +581,15 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
         impl_->draw();
         const auto action = impl_->pollAction();
         if (!action) continue;
-        if (*action == 0) throw ViewClosed{};
+        if (*action == cancelAction) {
+            impl_->enteringNumber = false;
+            impl_->window.setKeyRepeatEnabled(false);
+            return std::nullopt;
+        }
         if (*action == submitAction) {
             if (const auto value = parseNumber(impl_->input, min, max)) {
                 impl_->enteringNumber = false;
+                impl_->window.setKeyRepeatEnabled(false);
                 return value;
             }
             impl_->error = "Введите целое число от " + std::to_string(min) + " до " +
@@ -569,6 +600,7 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
 
 std::optional<std::string> SfmlView::readText(const std::string& prompt, std::size_t maxBytes) {
     impl_->enteringText = true;
+    impl_->window.setKeyRepeatEnabled(true);
     impl_->prompt = prompt;
     impl_->textInput.reset(maxBytes);
     impl_->selectAll = false;
@@ -579,6 +611,7 @@ std::optional<std::string> SfmlView::readText(const std::string& prompt, std::si
         if (!action) continue;
         if (*action == cancelAction || *action == submitAction) {
             impl_->enteringText = false;
+            impl_->window.setKeyRepeatEnabled(false);
             if (*action == cancelAction) return std::nullopt;
             return impl_->textInput.value();
         }
@@ -631,7 +664,6 @@ bool SfmlView::handoff(int team) {
     while (true) {
         impl_->draw();
         if (const auto action = impl_->pollAction()) {
-            if (*action == 0) throw ViewClosed{};
             if (*action == submitAction) break;
         }
     }

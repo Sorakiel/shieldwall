@@ -7,7 +7,8 @@
 #include <vector>
 #include "Unit.h"
 
-enum class ViewStage { Setup, Recruitment, Battle, Result };
+enum class ViewStage { MainMenu, Setup, Recruitment, Battle, Result };
+enum class NumberCancel { MainMenu, Dialog };
 enum class BattleMode { Automatic, Manual };
 enum class TurnAction { Next, Automatic, Manual, Exit, Save };
 
@@ -67,6 +68,7 @@ class View {
 public:
     virtual ~View() = default;
     virtual void setStage(ViewStage) {}
+    virtual void clearDisplay() {}
     virtual void setBattleProgress(int, BattleMode) {}
     virtual TurnAction waitForTurn(BattleMode) { return TurnAction::Next; }
     virtual bool handoff(int) { return true; }
@@ -80,6 +82,10 @@ public:
     }
     virtual std::optional<std::uint32_t> readNumber(const std::string& prompt,
         std::uint32_t min, std::uint32_t max) = 0;
+    virtual std::optional<std::uint32_t> readNumberCancelable(const std::string& prompt,
+        std::uint32_t min, std::uint32_t max, NumberCancel) {
+        return readNumber(prompt, min, max);
+    }
     virtual std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) = 0;
     virtual void message(const std::string& text) = 0;
     virtual void showArmies(const BattleSnapshot& snapshot) = 0;

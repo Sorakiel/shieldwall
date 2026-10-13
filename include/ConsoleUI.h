@@ -23,6 +23,9 @@ public:
     void showRecruitment(const RecruitmentSnapshot& snapshot) override;
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override;
 
+    void clearDisplay() override;
+    std::optional<std::uint32_t> readNumberCancelable(const std::string& prompt,
+        std::uint32_t min, std::uint32_t max, NumberCancel cancel) override;
     std::optional<std::string> readText(const std::string& prompt,
         std::size_t maxBytes) override;
     std::optional<std::uint32_t> readNumber(const std::string& prompt, std::uint32_t min,

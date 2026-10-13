@@ -6,6 +6,12 @@ ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
     : ownedView_(std::make_unique<ConsoleView>(in, out)), view_(ownedView_.get()) {}
 
 void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
+void ConsoleUI::clearDisplay() { view_->clearDisplay(); }
+
+std::optional<std::uint32_t> ConsoleUI::readNumberCancelable(const std::string& prompt,
+    std::uint32_t min, std::uint32_t max, NumberCancel cancel) {
+    return view_->readNumberCancelable(prompt, min, max, cancel);
+}
 
 void ConsoleUI::setBattleProgress(int turn, BattleMode mode) {
     view_->setBattleProgress(turn, mode);

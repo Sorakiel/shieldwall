@@ -172,36 +172,64 @@ void Menu::run() {
         }
     };
     auto selectSave = [&]() -> std::optional<std::string> {
-        const auto saves = SaveSlots::list(saveDir);
-        if (saves.empty()) {
-            ui_.message("Сохранений нет.");
-            return std::nullopt;
-        }
-        const auto nextPage = static_cast<std::uint32_t>(saves.size() + 1);
-        const auto previousPage = nextPage + 1;
+        bool deleting = false;
         std::size_t page = 0;
         while (true) {
-            ui_.message("Сохранения — страница " + std::to_string(page + 1) + " из " +
+            // Refresh after deletion and keep the last page within the new list.
+            const auto saves = SaveSlots::list(saveDir);
+            if (saves.empty()) {
+                ui_.message("Сохранений нет.");
+                return std::nullopt;
+            }
+            page = std::min(page, (saves.size() - 1) / savesPerPage);
+            const auto nextPage = static_cast<std::uint32_t>(saves.size() + 1);
+            const auto previousPage = nextPage + 1;
+            const auto toggleDelete = nextPage + 2;
+            ui_.message(std::string(deleting ? "Выберите сохранение для удаления — " : "Сохранения — ") +
+                        "страница " + std::to_string(page + 1) + " из " +
                         std::to_string((saves.size() + savesPerPage - 1) / savesPerPage) + ".");
             std::vector<MenuChoice> choices;
             const auto end = std::min(saves.size(), (page + 1) * savesPerPage);
             for (std::size_t index = page * savesPerPage; index < end; ++index) {
                 const auto label = saveLabel(saves[index]);
-                choices.push_back({static_cast<std::uint32_t>(index + 1), label, saves[index].valid});
+                choices.push_back({static_cast<std::uint32_t>(index + 1), label,
+                                   deleting || saves[index].valid});
                 if (!saves[index].valid) ui_.message(label);
             }
             choices.push_back({previousPage, "Назад по страницам", page > 0});
             choices.push_back({nextPage, "Далее", end < saves.size()});
+            choices.push_back({toggleDelete, deleting ? "К загрузке" : "Удалить сохранения"});
             choices.push_back({0, "Отмена", true, true});
             const auto action = ui_.choose(choices);
             if (!action || *action == 0) return std::nullopt;
+            if (*action == toggleDelete) { deleting = !deleting; continue; }
             if (*action == nextPage) {
                 if (end < saves.size()) ++page;
             } else if (*action == previousPage) {
                 if (page > 0) --page;
-            } else if (*action <= saves.size() && *action > page * savesPerPage &&
-                       *action <= end && saves[*action - 1].valid) {
-                return saves[*action - 1].path;
+            } else if (*action <= saves.size() && *action > page * savesPerPage && *action <= end) {
+                const auto& selected = saves[*action - 1];
+                if (!deleting) {
+                    if (selected.valid) return selected.path;
+                    continue;
+                }
+                ui_.message("Удалить сохранение «" + selected.name + "»? Это действие нельзя отменить.");
+                if (selected.name == SaveSlots::AutosaveName) {
+                    ui_.message("Автосохранение появится снова при следующем сохранении прогресса.");
+                }
+                const auto confirm = ui_.choose({{1, "Удалить сохранение"},
+                                                 {0, "Отмена", true, true}});
+                if (!confirm || *confirm == 0) continue;
+                const std::filesystem::path file(selected.path);
+                // Delete only a .txt file enumerated directly in the saves directory.
+                if (file.extension() != ".txt" ||
+                    !std::filesystem::equivalent(file.parent_path(), saveDir)) {
+                    throw DataError("Файл находится вне папки сохранений");
+                }
+                std::error_code error;
+                const bool removed = std::filesystem::remove(file, error);
+                ui_.message(error ? "Не удалось удалить: " + error.message() :
+                            removed ? "Сохранение удалено." : "Сохранение уже отсутствует.");
             }
         }
     };
@@ -211,16 +239,18 @@ void Menu::run() {
         checkpoint(SavePhase::Recruitment, 0);
     };
     auto selectMode = [&] {
-        ui_.message("Выберите управление ходами.");
-        const auto choice = ui_.choose({{1, "Автобой"}, {2, "По одному ходу"}});
-        if (!choice) return false;
+        ui_.message("Выберите управление ходами. 0 — Отмена (в главное меню).");
+        const auto choice = ui_.choose({{1, "Автобой"}, {2, "По одному ходу"},
+                                        {0, "В главное меню", true, true}});
+        if (!choice || *choice == 0) return false;
         mode = *choice == 2 ? BattleMode::Manual : BattleMode::Automatic;
         return true;
     };
     auto selectInput = [&] {
-        ui_.message("Как игроки набирают армии?");
-        const auto choice = ui_.choose({{1, "Общий экран"}, {2, "Раздельный ввод"}});
-        if (!choice) return false;
+        ui_.message("Как игроки набирают армии? 0 — Отмена (в главное меню).");
+        const auto choice = ui_.choose({{1, "Общий экран"}, {2, "Раздельный ввод"},
+                                        {0, "В главное меню", true, true}});
+        if (!choice || *choice == 0) return false;
         privateInput = *choice == 2;
         return true;
     };
@@ -228,7 +258,8 @@ void Menu::run() {
     while (state != State::Exit) {
         switch (state) {
         case State::Welcome: {
-            ui_.setStage(ViewStage::Setup);
+            ui_.clearDisplay();
+            ui_.setStage(ViewStage::MainMenu);
             ui_.message("Shieldwall — новая партия или загрузка сохранения.");
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}});
             if (!choice || *choice == 0) return;
@@ -238,12 +269,12 @@ void Menu::run() {
         }
         case State::Setup: {
             ui_.setStage(ViewStage::Setup);
-            const auto budget = ui_.readNumber("Лимит цены каждой армии: ", minBudget,
-                                               std::numeric_limits<int>::max());
-            if (!budget) return;
-            const auto seed = ui_.readNumber("Seed (например, 42): ", 0,
-                                             std::numeric_limits<std::uint32_t>::max());
-            if (!seed || !selectMode() || !selectInput()) return;
+            const auto budget = ui_.readNumberCancelable("Лимит цены каждой армии: ", minBudget,
+                std::numeric_limits<int>::max(), NumberCancel::MainMenu);
+            if (!budget) { state = State::Welcome; break; }
+            const auto seed = ui_.readNumberCancelable("Seed (например, 42): ", 0,
+                std::numeric_limits<std::uint32_t>::max(), NumberCancel::MainMenu);
+            if (!seed || !selectMode() || !selectInput()) { state = State::Welcome; break; }
             clearSession(session);
             data = {};
             data.costLimit = static_cast<int>(*budget);
@@ -265,10 +296,13 @@ void Menu::run() {
                 if (privateInput && !ui_.handoff(team)) return;
                 ui_.showRecruitment(recruitmentFrame(builders, catalog_, team, privateInput));
                 ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
-                const auto method = ui_.choose({{1, "Случайный набор"}, {2, "Ручная закупка"},
-                                                {0, "В главное меню"}});
+                std::vector<MenuChoice> methods{{1, "Случайный набор"}, {2, "Ручная закупка"}};
+                if (!builders[team]->units().empty()) methods.push_back({30, "Армия готова"});
+                methods.push_back({0, "В главное меню", true, true});
+                const auto method = ui_.choose(methods);
                 if (!method) return;
                 if (*method == 0) { completed = false; break; }
+                if (*method == 30) continue;
                 if (*method == 1) {
                     Army generated = generator.generate(data.costLimit, armyRng);
                     builders[team] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
@@ -291,7 +325,7 @@ void Menu::run() {
                     choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
                     choices.push_back({30, "Армия готова", hasUnits});
                     choices.push_back({40, "Сохранить"});
-                    choices.push_back({0, "В главное меню"});
+                    choices.push_back({0, "В главное меню", true, true});
                     const auto choice = ui_.choose(choices);
                     if (!choice) return;
                     if (*choice == 0) { completed = false; break; }
@@ -315,12 +349,14 @@ void Menu::run() {
                     } else if (*choice == 20 || *choice == 21) {
                         if (!hasUnits) { ui_.message("Строй пока пуст."); continue; }
                         const auto size = static_cast<std::uint32_t>(builders[team]->units().size());
-                        const auto from = ui_.readNumber("Позиция бойца (с 1): ", 1, size);
-                        if (!from) return;
+                        const auto from = ui_.readNumberCancelable("Позиция бойца (с 1): ", 1, size,
+                            NumberCancel::Dialog);
+                        if (!from) continue;
                         if (*choice == 20) outcome = builders[team]->remove(*from - 1);
                         else {
-                            const auto to = ui_.readNumber("Новая позиция (с 1): ", 1, size);
-                            if (!to) return;
+                            const auto to = ui_.readNumberCancelable("Новая позиция (с 1): ", 1, size,
+                                NumberCancel::Dialog);
+                            if (!to) continue;
                             outcome = builders[team]->move(*from - 1, *to - 1);
                         }
                     }
@@ -347,8 +383,9 @@ void Menu::run() {
             ui_.showArmies(*session.armyA, *session.armyB);
             const auto choice = ui_.choose({{1, "К бою"}, {2, "Изменить армии"},
                                             {3, "Настройки"}, {4, "Загрузить"},
-                                            {40, "Сохранить"}, {0, "Выход"}});
-            if (!choice || *choice == 0) return;
+                                            {40, "Сохранить"}, {0, "В главное меню", true, true}});
+            if (!choice) return;
+            if (*choice == 0) { state = State::Welcome; break; }
             if (*choice == 40) { saveByName(SavePhase::Battle, 0); break; }
             if (*choice == 2) {
                 clearSession(session);
@@ -375,12 +412,14 @@ void Menu::run() {
                         catalog_, loaded.costLimit, loaded.armyA));
                     restored[1] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
                         catalog_, loaded.costLimit, loaded.armyB));
+                    ui_.clearDisplay();
+                    ui_.setStage(ViewStage::Setup);
                     const auto oldMode = mode;
                     const auto oldInput = privateInput;
                     if (!selectMode() || !selectInput()) {
                         mode = oldMode;
                         privateInput = oldInput;
-                        state = loadReturn;
+                        state = State::Welcome;
                         break;
                     }
                     clearSession(session);
@@ -394,8 +433,10 @@ void Menu::run() {
                     if (loaded.phase == SavePhase::Result && !restored.engine->finished()) {
                         throw DataError("сохранение результата содержит незавершённый бой");
                     }
+                    ui_.clearDisplay();
+                    ui_.setStage(ViewStage::Setup);
                     if (!restored.engine->finished() && !selectMode()) {
-                        state = loadReturn;
+                        state = State::Welcome;
                         break;
                     }
                     clearSession(session);
@@ -441,8 +482,9 @@ void Menu::run() {
                 resultShown = true;
             }
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"},
-                                            {40, "Сохранить"}, {0, "Выход"}});
-            if (!choice || *choice == 0) return;
+                                            {40, "Сохранить"}, {0, "В главное меню", true, true}});
+            if (!choice) return;
+            if (*choice == 0) { state = State::Welcome; break; }
             if (*choice == 40) { saveByName(SavePhase::Result, session.turn); break; }
             loadReturn = State::Result;
             state = *choice == 1 ? State::Setup : State::Load;

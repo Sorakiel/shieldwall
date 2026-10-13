@@ -235,9 +235,9 @@ void testMenuSendsExplicitStagesToView() {
     ConsoleUI ui(view);
     const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
     Menu(ui, catalog, "build/ui-menu-tests/autosave.txt").run();
-    CHECK((view.stages == std::vector<ViewStage>{ViewStage::Setup, ViewStage::Setup,
+    CHECK((view.stages == std::vector<ViewStage>{ViewStage::MainMenu, ViewStage::Setup,
                                                ViewStage::Recruitment, ViewStage::Recruitment,
-                                               ViewStage::Battle, ViewStage::Result}));
+                                               ViewStage::Battle, ViewStage::Result, ViewStage::MainMenu}));
     CHECK(view.frames.size() >= 2);
     CHECK(!view.frames.front().finished);
     CHECK(view.frames.back().finished);
