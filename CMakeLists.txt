@@ -35,6 +35,7 @@ add_executable(shieldwall
     include/UserInterface.h
     src/SaveSlots.cpp
     src/TextInput.cpp
+    src/SaveLocation.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)

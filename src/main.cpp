@@ -7,6 +7,7 @@
 #include "ConsoleUI.h"
 #include "ConsoleView.h"
 #include "Menu.h"
+#include "SaveLocation.h"
 #if SHIELDWALL_GRAPHICS
 #include "SfmlView.h"
 #endif
@@ -123,7 +124,8 @@ int main(int argc, char* argv[]) {
             ui.showEvents(demoEvents(), logRng);
             ui.choose({{0, "Выход"}});
         } else {
-            Menu(ui, catalog).run();
+            const auto saves = prepareSaveLocation(directory, std::filesystem::current_path());
+            Menu(ui, catalog, (saves.directory / "autosave.txt").string()).run(saves.messages);
         }
         return 0;
     } catch (const ViewClosed&) {
