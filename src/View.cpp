@@ -21,6 +21,22 @@ const char* unitKindName(UnitKind kind) {
     case UnitKind::Light: return "Лёгкий";
     case UnitKind::Heavy: return "Тяжёлый";
     case UnitKind::Archer: return "Лучник";
+    case UnitKind::Mage: return "Маг";
+    case UnitKind::Healer: return "Целитель";
     }
     return "Юнит";
+}
+
+std::string specialActionDescription(UnitKind kind, int power, int range) {
+    switch (kind) {
+    case UnitKind::Light:
+    case UnitKind::Heavy: return "Ближний бой";
+    case UnitKind::Archer:
+        return "Выстрел " + std::to_string(power) + " | дальность " + std::to_string(range);
+    case UnitKind::Mage:
+        return "Клонирование " + std::to_string(power) + "% | радиус " + std::to_string(range) + " | цели: лёгкие, лучники";
+    case UnitKind::Healer:
+        return "Лечение " + std::to_string(power) + " HP | радиус " + std::to_string(range) + " | кроме мага";
+    }
+    return "";
 }

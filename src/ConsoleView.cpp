@@ -168,8 +168,7 @@ void ConsoleView::showRecruitment(const RecruitmentSnapshot& snapshot) {
         message(std::string(unitKindName(offer.kind)) + " | цена " + std::to_string(offer.cost) +
                 " | hp " + std::to_string(offer.hp) +
                 " | атака " + std::to_string(offer.melee) +
-                " | выстрел " + std::to_string(offer.ranged) +
-                " | дальность " + std::to_string(offer.range) +
-                " | защита " + std::to_string(offer.defense));
+                " | защита " + std::to_string(offer.defense) + " | " +
+                specialActionDescription(offer.kind, offer.ranged, offer.range));
     }
 }
