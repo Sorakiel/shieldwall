@@ -1,0 +1,36 @@
+#include "BuffGiver.h"
+#include <vector>
+
+BuffGiver::Result BuffGiver::tryGrant(Army& army, std::size_t lightIndex, std::mt19937& rng) {
+    Result result;
+    if (usedThisTurn_ || lightIndex >= army.size()) return result;
+
+    Unit* giver = army.at(lightIndex);
+    if (!giver->isAlive() || giver->kind() != UnitKind::Light) return result;
+
+    std::vector<std::size_t> heavies;
+    if (lightIndex > 0) heavies.push_back(lightIndex - 1);
+    if (lightIndex + 1 < army.size()) heavies.push_back(lightIndex + 1);
+    std::vector<std::size_t> neighbours;
+    for (std::size_t i : heavies) {
+        Unit* unit = army.at(i);
+        if (unit->isAlive() && unit->kind() == UnitKind::Heavy) neighbours.push_back(i);
+    }
+    if (neighbours.empty()) return result;
+
+    // Бросок шанса делаем только когда есть кому давать: иначе зря тратится случайность
+    if (static_cast<int>(rng() % 100) >= chance_) return result;
+
+    const std::size_t target = neighbours[rng() % neighbours.size()];
+    const BuffKind buff = static_cast<BuffKind>(rng() % 4);
+
+    result.giver = giver->name();
+    result.receiver = army.at(target)->name();
+    result.buff = buff;
+    // Самая обёртка: вынули тяжёлого, завернули в бонус, поставили на то же место
+    std::unique_ptr<Unit> old = army.replace(target, nullptr);
+    army.replace(target, decorate(std::move(old), buff));
+    result.granted = true;
+    usedThisTurn_ = true;
+    return result;
+}
