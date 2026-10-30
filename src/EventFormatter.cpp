@@ -38,6 +38,7 @@ std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng) 
         return prefix + (alternate ? "Поле расчищено: " : "После уборки ") + actor +
             (alternate ? " выходит в первый ряд." : " занимает первое место в строю.");
     case EventType::BattleEnd:
+        if (event.team == -2) return prefix + "Бой окончен. Ничья.";
         return prefix + (alternate ? "Бой окончен. Победили " : "Победа за командой ") +
             teamName(event.team) + ".";
     case EventType::Clone:

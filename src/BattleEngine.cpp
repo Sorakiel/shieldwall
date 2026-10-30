@@ -145,15 +145,17 @@ BattleEngine::BattleEngine(Army& a, Army& b, std::uint32_t seed)
 }
 
 bool BattleEngine::finished() const {
-    return a_.isDefeated() || b_.isDefeated();
+    return a_.isDefeated() || b_.isDefeated() || turn_ >= MaxTurns;
 }
 
 int BattleEngine::winner() const {
     const bool aDead = a_.isDefeated();
     const bool bDead = b_.isDefeated();
-    if (aDead && bDead) return -2;   // ничья (на практике почти невозможна)
+    if (aDead && bDead) return -2;
     if (aDead) return 1;
     if (bDead) return 0;
+    // Победа на последнем разрешённом ходу имеет приоритет над лимитом.
+    if (turn_ >= MaxTurns) return -2;
     return -1;
 }
 

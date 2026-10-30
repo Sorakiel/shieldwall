@@ -8,11 +8,15 @@
 
 class BattleEngine {
 public:
+    // ВРЕМЕННО: ограничиваем бой 1000 полными ходами, чтобы лечение и
+    // клонирование не зацикливали автобой. Заменить правилом определения ничьей.
+    static constexpr int MaxTurns = 1000;
+
     BattleEngine(Army& a, Army& b, std::uint32_t seed);
     std::vector<BattleEvent> nextTurn();   // один полный ход, три фазы
     std::vector<BattleEvent> runToEnd();   // автобой: nextTurn в цикле
     bool finished() const;
-    int  winner()   const;                 // -1 пока бой идёт
+    int  winner()   const;                 // 0/1 — победитель, -1 — бой идёт, -2 — ничья
 
 private:
     Army& a_;

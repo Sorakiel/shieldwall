@@ -3,7 +3,8 @@
 #include "EventFormatter.h"
 
 ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
-    : ownedView_(std::make_unique<ConsoleView>(in, out)), view_(ownedView_.get()) {}
+    : ownedView_(std::make_unique<ConsoleView>(in, out)), view_(ownedView_.get()) {
+}
 
 void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
 void ConsoleUI::clearDisplay() { view_->clearDisplay(); }
@@ -29,7 +30,7 @@ std::optional<std::uint32_t> ConsoleUI::choose(const std::vector<MenuChoice>& ch
 }
 
 std::optional<std::uint32_t> ConsoleUI::readNumber(const std::string& prompt,
-                                                 std::uint32_t min, std::uint32_t max) {
+    std::uint32_t min, std::uint32_t max) {
     return view_->readNumber(prompt, min, max);
 }
 
@@ -41,7 +42,7 @@ void ConsoleUI::message(const std::string& text) { view_->message(text); }
 
 void ConsoleUI::showArmies(Army& a, Army& b) {
     BattleSnapshot snapshot;
-    Army* armies[] = {&a, &b};
+    Army* armies[] = { &a, &b };
     for (int team = 0; team < 2; ++team) {
         auto& output = snapshot.armies[team];
         Army& army = *armies[team];
@@ -50,7 +51,7 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
         output.units.reserve(army.size());
         for (std::size_t i = 0; i < army.size(); ++i) {
             const Unit& unit = *army.at(i);
-            output.units.push_back({unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost()});
+            output.units.push_back({ unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost() });
         }
     }
     snapshot.finished = a.isDefeated() || b.isDefeated();
@@ -65,6 +66,6 @@ void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937&
 void ConsoleUI::showResult(int winner) {
     const std::string text = winner == 0 || winner == 1
         ? std::string("Итог: победили ") + EventFormatter::teamName(winner) + "."
-        : "Итог: победитель не определён.";
+        : winner == -2 ? "Итог: ничья." : "Итог: победитель не определён.";
     view_->showResult(winner, text);
 }
