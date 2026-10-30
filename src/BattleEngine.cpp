@@ -2,9 +2,55 @@
 
 #include <algorithm>
 #include "TargetSelector.h"
+#include "Healer.h"
+#include "Mage.h"
 #include "Unit.h"
 
 namespace {
+
+    // У каждой армии свой лимит: не больше одного успешного бонуса за ход.
+    void grantBuffs(Army& army, BuffGiver& giver, int team, int turn,
+        std::mt19937& rng, std::vector<BattleEvent>& events) {
+        giver.newTurn();
+        for (std::size_t i = 0; i < army.size(); ++i) {
+            Unit* unit = army.at(i);
+            if (!unit->isAlive() || unit->kind() != UnitKind::Light) continue;
+            const auto result = giver.tryGrant(army, i, rng);
+            if (result.granted) {
+                BattleEvent event{ EventType::Buff, turn, team,
+                                   result.giver, result.receiver };
+                event.buff = buffName(result.buff);
+                events.push_back(event);
+            }
+        }
+    }
+
+    // После обоих ближних ударов, до стрельбы и уборки погибших.
+    void castAbilities(Army& army, int team, int turn,
+        std::mt19937& rng, std::vector<BattleEvent>& events) {
+        for (std::size_t i = 1; i < army.size(); ++i) {
+            Unit* unit = army.at(i);
+            if (!unit->isAlive()) continue;
+            if (Mage* mage = dynamic_cast<Mage*>(unit)) {
+                const auto result = mage->cast(army, i, rng);
+                if (result.performed) {
+                    events.push_back({ result.success ? EventType::Clone : EventType::CloneFailed,
+                                       turn, team, mage->name(), result.target });
+                }
+                // Копия вставлена перед магом: не даём ему второе действие.
+                if (result.success) ++i;
+            }
+            else if (Healer* healer = dynamic_cast<Healer*>(unit)) {
+                const auto result = healer->cast(army, i, rng);
+                if (result.performed) {
+                    BattleEvent event{ EventType::Heal, turn, team,
+                                       healer->name(), result.target };
+                    event.restored = result.restored;
+                    events.push_back(event);
+                }
+            }
+        }
+    }
 
     int damageOf(int attack, int defense) {
         const int raw = attack - defense;
@@ -126,6 +172,10 @@ std::vector<BattleEvent> BattleEngine::nextTurn() {
 
     ++turn_;
 
+    // Все способности используют тот же генератор, что жребий и стрельба.
+    grantBuffs(a_, buffsA_, 0, turn_, rng_, events);
+    grantBuffs(b_, buffsB_, 1, turn_, rng_, events);
+
     // Жребий. rng() % 2 одинаково работает на MSVC и libc++/libstdc++.
     const bool aFirst = (rng_() % 2) == 0;
 
@@ -137,6 +187,16 @@ std::vector<BattleEvent> BattleEngine::nextTurn() {
     else {
         meleeStrike(b_, a_, 1, turn_, events);
         meleeStrike(a_, b_, 0, turn_, events);
+    }
+
+    // Завершение фазы 1: способности в порядке жребия.
+    if (aFirst) {
+        castAbilities(a_, 0, turn_, rng_, events);
+        castAbilities(b_, 1, turn_, rng_, events);
+    }
+    else {
+        castAbilities(b_, 1, turn_, rng_, events);
+        castAbilities(a_, 0, turn_, rng_, events);
     }
 
     // Фаза 2: стрелки.

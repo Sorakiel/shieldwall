@@ -4,23 +4,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(Root "${CMAKE_CURRENT_SOURCE_DIR}/../..")
-set(CoreSources)
-# Те же временные реализации, что в main и тестах данных; после интеграции
-# ядра автоматически проверяем оболочку с настоящими классами.
-foreach(Pair "Unit|LightUnit::LightUnit|UnitStub" "Army|Army::add|ArmyStub"
-             "BattleEngine|BattleEngine::nextTurn|EngineStub")
-    string(REPLACE "|" ";" Parts "${Pair}")
-    list(GET Parts 0 Name)
-    list(GET Parts 1 Signature)
-    list(GET Parts 2 Stub)
-    file(READ "${Root}/src/${Name}.cpp" Source)
-    string(FIND "${Source}" "${Signature}" Position)
-    if(Position EQUAL -1)
-        list(APPEND CoreSources "${Root}/tests/stubs/${Stub}.cpp")
-    else()
-        list(APPEND CoreSources "${Root}/src/${Name}.cpp")
-    endif()
-endforeach()
+set(CoreSources
+    "${Root}/src/Unit.cpp"
+    "${Root}/src/Army.cpp"
+    "${Root}/src/BattleEngine.cpp")
 
 add_library(test_support STATIC ${CoreSources}
     "${Root}/src/TargetSelector.cpp"
@@ -60,7 +47,11 @@ target_link_libraries(save_ui_tests PRIVATE test_support)
 add_executable(pattern_tests "${Root}/tests/PatternTests.cpp")
 target_link_libraries(pattern_tests PRIVATE test_support)
 
-foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests)
+add_executable(ability_engine_tests "${Root}/tests/AbilityEngineTests.cpp"
+    "${Root}/src/EventFormatter.cpp")
+target_link_libraries(ability_engine_tests PRIVATE test_support)
+
+foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests ability_engine_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
         if(NOT Target STREQUAL "test_support")
@@ -77,4 +68,5 @@ add_test(NAME data COMMAND data_tests)
 add_test(NAME session COMMAND session_tests)
 add_test(NAME save_ui COMMAND save_ui_tests)
 add_test(NAME patterns COMMAND pattern_tests)
-set_tests_properties(ui data session save_ui patterns PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME ability_engine COMMAND ability_engine_tests)
+set_tests_properties(ui data session save_ui patterns ability_engine PROPERTIES WORKING_DIRECTORY "${Root}")

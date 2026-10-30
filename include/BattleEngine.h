@@ -3,6 +3,7 @@
 #include <random>
 #include <vector>
 #include "Army.h"
+#include "BuffGiver.h"
 #include "Event.h"
 
 class BattleEngine {
@@ -17,5 +18,7 @@ private:
     Army& a_;
     Army& b_;
     std::mt19937 rng_;
+    BuffGiver buffsA_;
+    BuffGiver buffsB_;
     int turn_ = 0;
 };
