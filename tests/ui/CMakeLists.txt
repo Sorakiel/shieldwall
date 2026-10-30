@@ -51,7 +51,11 @@ add_executable(ability_engine_tests "${Root}/tests/AbilityEngineTests.cpp"
     "${Root}/src/EventFormatter.cpp")
 target_link_libraries(ability_engine_tests PRIVATE test_support)
 
-foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests ability_engine_tests)
+add_executable(console_layout_tests ConsoleLayoutTests.cpp
+    "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp")
+target_include_directories(console_layout_tests PRIVATE "${Root}/include")
+
+foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests ability_engine_tests console_layout_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
         if(NOT Target STREQUAL "test_support")
@@ -69,4 +73,5 @@ add_test(NAME session COMMAND session_tests)
 add_test(NAME save_ui COMMAND save_ui_tests)
 add_test(NAME patterns COMMAND pattern_tests)
 add_test(NAME ability_engine COMMAND ability_engine_tests)
-set_tests_properties(ui data session save_ui patterns ability_engine PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME console_layout COMMAND console_layout_tests)
+set_tests_properties(ui data session save_ui patterns ability_engine console_layout PROPERTIES WORKING_DIRECTORY "${Root}")
