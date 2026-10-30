@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <deque>
+#include <iterator>
 #include <stdexcept>
 
 namespace {
@@ -36,6 +37,8 @@ sf::Color kindColor(UnitKind kind) {
     case UnitKind::Light: return sf::Color(77, 159, 142);
     case UnitKind::Heavy: return sf::Color(157, 127, 192);
     case UnitKind::Archer: return sf::Color(207, 162, 91);
+    case UnitKind::Mage: return sf::Color(111, 136, 225);
+    case UnitKind::Healer: return sf::Color(135, 199, 109);
     }
     return muted;
 }
@@ -198,19 +201,21 @@ struct SfmlView::Impl {
                   "   Осталось " + std::to_string(recruitment.remaining)),
              48.f, 178.f, 16, muted);
         drawArmy(recruitment.activeTeam, 222.f);
-        float y = 462.f;
+        float y = 438.f;
         for (const auto& offer : recruitment.offers) {
-            rectangle(48.f, y + 8.f, 10.f, 10.f, kindColor(offer.kind));
-            text(utf8(std::string(unitKindName(offer.kind)) + "  |  цена " +
+            rectangle(48.f, y + 4.f, 10.f, 24.f, kindColor(offer.kind));
+            const auto color = offer.enabled ? foreground : muted;
+            text(elide(utf8(std::string(unitKindName(offer.kind)) + "  |  цена " +
                       std::to_string(offer.cost) + "  |  HP " + std::to_string(offer.hp) +
                       "  |  атака " + std::to_string(offer.melee) +
-                      "  |  выстрел " + std::to_string(offer.ranged) +
-                      "  |  дальн. " + std::to_string(offer.range) +
-                      "  |  защита " + std::to_string(offer.defense)),
-                 70.f, y, 14, offer.enabled ? foreground : muted);
-            y += 43.f;
+                      "  |  защита " + std::to_string(offer.defense)), 752.f, 13),
+                 70.f, y, 13, color);
+            text(utf8(specialActionDescription(offer.kind, offer.ranged, offer.range)),
+                 70.f, y + 17.f, 12, color);
+            y += 34.f;
         }
-        text(utf8("Номера в строю нужны для удаления и перестановки."), 48.f, 628.f, 14, muted);
+        text(utf8("Номера в строю нужны для удаления и перестановки."), 48.f, 626.f, 12, muted);
+        text(utf8("Особые действия — только со 2-й позиции в строю."), 48.f, 646.f, 12, muted);
     }
 
     void drawArmy(int team, float y) {
@@ -353,13 +358,14 @@ struct SfmlView::Impl {
             drawArmy(0, 140.f);
             rectangle(48.f, 368.f, 780.f, 1.f, raised);
             drawArmy(1, 390.f);
-            const UnitKind kinds[] = {UnitKind::Light, UnitKind::Heavy, UnitKind::Archer};
-            for (int i = 0; i < 3; ++i) {
-                const float x = 48.f + static_cast<float>(i) * 170.f;
+            const UnitKind kinds[] = {UnitKind::Light, UnitKind::Heavy, UnitKind::Archer,
+                                      UnitKind::Mage, UnitKind::Healer};
+            for (std::size_t i = 0; i < std::size(kinds); ++i) {
+                const float x = 48.f + static_cast<float>(i) * 150.f;
                 rectangle(x, 628.f, 12.f, 12.f, kindColor(kinds[i]));
                 text(utf8(unitKindName(kinds[i])), x + 20.f, 622.f, 14, muted);
             }
-            text(utf8("Рамка — команда"), 627.f, 622.f, 14, muted);
+            text(utf8("Рамка — команда, цвет шапки — тип бойца."), 48.f, 650.f, 12, muted);
         }
         drawLog();
 
@@ -373,7 +379,7 @@ struct SfmlView::Impl {
             button("В главное меню", 612.f, 708.f, 244.f, 0);
             text(utf8("Enter / пробел — ход · A — режим · S — сохранить"), 26.f, 770.f, 13, muted);
         } else {
-            const std::size_t columns = choices.size() <= 3 ? choices.size() : 4;
+            const std::size_t columns = choices.size() <= 3 ? choices.size() : choices.size() > 8 ? 5 : 4;
             const float step = columns == 0 ? 832.f : 832.f / static_cast<float>(columns);
             for (std::size_t index = 0; index < choices.size(); ++index) {
                 const auto& choice = choices[index];

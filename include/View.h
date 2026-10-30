@@ -95,3 +95,5 @@ public:
 std::optional<std::uint32_t> parseNumber(const std::string& text,
                                        std::uint32_t min, std::uint32_t max);
 const char* unitKindName(UnitKind kind);
+
+std::string specialActionDescription(UnitKind kind, int power, int range);

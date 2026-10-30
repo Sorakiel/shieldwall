@@ -10,6 +10,8 @@
 #include <random>
 #include "ArmyBuilder.h"
 #include "ArmyGenerator.h"
+#include "ArmyFactory.h"
+#include "MilitaryAcademy.h"
 #include "BattleReplay.h"
 #include "BattleRunner.h"
 #include "EventFormatter.h"
@@ -46,7 +48,7 @@ std::string saveLabel(const SaveSummary& summary) {
 
 using Builders = std::array<std::unique_ptr<ArmyBuilder>, 2>;
 
-RecruitmentSnapshot recruitmentFrame(const Builders& builders, const UnitCatalog& catalog,
+RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAcademy& academy,
                                       int team, bool privateInput) {
     RecruitmentSnapshot frame;
     const ArmyBuilder& active = *builders[team];
@@ -64,9 +66,11 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const UnitCatalog
                                   record.spec.maxHp, record.spec.cost});
         }
     }
-    for (const auto& spec : catalog.specs()) {
-        frame.offers.push_back({spec.kind, spec.cost, spec.maxHp, spec.melee, spec.ranged,
-                                spec.range, spec.defense, active.canBuy(spec.kind)});
+    for (const auto& entry : academy.available()) {
+        const Unit& sample = *entry.sample;
+        const auto& spec = entry.spec;
+        frame.offers.push_back({sample.kind(), sample.cost(), sample.maxHp(), sample.meleeAttack(),
+                                spec.ranged, spec.range, sample.defense(), active.canBuy(spec.kind)});
     }
     return frame;
 }
@@ -76,8 +80,26 @@ std::uint32_t buyAction(UnitKind kind) {
     case UnitKind::Light: return 1;
     case UnitKind::Heavy: return 2;
     case UnitKind::Archer: return 3;
+    case UnitKind::Mage: return 4;
+    case UnitKind::Healer: return 5;
     }
     return 0;
+}
+
+BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academy,
+                               UnitKind kind, std::mt19937& rng) {
+    if (!academy.offers(kind)) return BuildResult::UnknownKind;
+    if (!draft.canBuy(kind)) return BuildResult::NotEnoughBudget;
+    Army recruited;
+    if (!academy.tryEnlist(recruited, kind, ArmyGenerator::randomName(rng), draft.remaining())) {
+        return BuildResult::NotEnoughBudget;
+    }
+    auto records = draft.units();
+    auto added = SaveService::snapshot(recruited);
+    records.push_back(std::move(added.front()));
+    // Keep the existing serializable draft and all saved unit characteristics.
+    draft = ArmyBuilder::restore(draft.catalog(), draft.limit(), std::move(records));
+    return BuildResult::Ok;
 }
 
 const char* buildError(BuildResult result) {
@@ -105,7 +127,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
     const auto cheapest = std::min_element(catalog_.specs().begin(), catalog_.specs().end(),
         [](const UnitSpec& a, const UnitSpec& b) { return a.cost < b.cost; });
     const auto minBudget = static_cast<std::uint32_t>(cheapest->cost);
-    ArmyGenerator generator(catalog_);
+    MilitaryAcademy academy(catalog_);
     Builders builders;
     BattleSession session;
     SaveData data;
@@ -300,17 +322,21 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             bool completed = true;
             for (int team = 0; team < 2 && completed; ++team) {
                 if (privateInput && !ui_.handoff(team)) return;
-                ui_.showRecruitment(recruitmentFrame(builders, catalog_, team, privateInput));
+                ui_.showRecruitment(recruitmentFrame(builders, academy, team, privateInput));
                 ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
-                std::vector<MenuChoice> methods{{1, "Случайный набор"}, {2, "Ручная закупка"}};
+                std::vector<MenuChoice> methods{{1, "Случайный набор"}, {2, "Ручная закупка"},
+                                                 {3, "Сжатый набор"}};
                 if (!builders[team]->units().empty()) methods.push_back({30, "Армия готова"});
                 methods.push_back({0, "В главное меню", true, true});
                 const auto method = ui_.choose(methods);
                 if (!method) return;
                 if (*method == 0) { completed = false; break; }
                 if (*method == 30) continue;
-                if (*method == 1) {
-                    Army generated = generator.generate(data.costLimit, armyRng);
+                if (*method == 1 || *method == 3) {
+                    const auto algorithm = *method == 3 ? ArmyAlgorithm::Compact : ArmyAlgorithm::Random;
+                    const auto factory = makeArmyFactory(algorithm, catalog_);
+                    Army generated = factory->createArmy(data.costLimit, armyRng);
+                    ui_.message(factory->title() + ": " + EventFormatter::teamName(team));
                     builders[team] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
                         catalog_, data.costLimit, SaveService::snapshot(generated)));
                     saveRecruitment();
@@ -319,7 +345,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
 
                 bool editing = true;
                 while (editing) {
-                    const auto frame = recruitmentFrame(builders, catalog_, team, privateInput);
+                    const auto frame = recruitmentFrame(builders, academy, team, privateInput);
                     ui_.showRecruitment(frame);
                     std::vector<MenuChoice> choices;
                     for (const auto& offer : frame.offers) {
@@ -348,10 +374,10 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                     }
 
                     BuildResult outcome = BuildResult::UnknownKind;
-                    if (*choice >= 1 && *choice <= 3) {
-                        const UnitKind kind = *choice == 1 ? UnitKind::Light :
-                                              *choice == 2 ? UnitKind::Heavy : UnitKind::Archer;
-                        outcome = builders[team]->buy(kind, armyRng);
+                    const auto purchase = std::find_if(frame.offers.begin(), frame.offers.end(),
+                        [&](const RecruitmentOffer& offer) { return buyAction(offer.kind) == *choice; });
+                    if (purchase != frame.offers.end()) {
+                        outcome = recruitFromAcademy(*builders[team], academy, purchase->kind, armyRng);
                     } else if (*choice == 20 || *choice == 21) {
                         if (!hasUnits) { ui_.message("Строй пока пуст."); continue; }
                         const auto size = static_cast<std::uint32_t>(builders[team]->units().size());

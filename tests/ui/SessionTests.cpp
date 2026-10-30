@@ -6,6 +6,7 @@
 #include <sstream>
 #include "ArmyBuilder.h"
 #include "ArmyGenerator.h"
+#include "ArmyFactory.h"
 #include "BattleReplay.h"
 #include "BattleRunner.h"
 #include "ConsoleUI.h"
@@ -41,6 +42,7 @@ public:
     std::deque<std::uint32_t> numbers, actions;
     std::deque<TurnAction> turns;
     std::vector<BattleSnapshot> frames;
+    std::vector<std::vector<MenuChoice>> menus;
     std::vector<RecruitmentSnapshot> drafts;
     std::vector<std::string> messages;
     std::vector<int> handoffs, progress;
@@ -51,7 +53,8 @@ public:
         if (numbers.empty()) return std::nullopt;
         const auto value = numbers.front(); numbers.pop_front(); return value;
     }
-    std::optional<std::uint32_t> choose(const std::vector<MenuChoice>&) override {
+    std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override {
+        menus.push_back(choices);
         if (actions.empty()) return std::nullopt;
         const auto value = actions.front(); actions.pop_front(); return value;
     }
@@ -311,7 +314,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
     {
         SaveFile file;
         // Cancel remove, and both the source and destination position of move.
-        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n4\n0\n5\n0\n5\n1\n0\n6\n1\n0\n0\n");
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n8\n1\n0\n0\n");
         std::ostringstream output;
         ConsoleUI ui(input, output);
         Menu(ui, catalog, file.path).run();
@@ -331,6 +334,102 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
         Menu(ui, catalog, file.path).run();
         CHECK(view.actions.empty());
         CHECK(SaveService::loadFromFile(file.path).phase == SavePhase::Battle);
+    }
+}
+
+void testSpecialUnitRecruitment(const UnitCatalog& catalog) {
+    SaveFile file;
+    ScriptView first;
+    first.numbers = {70, 9};
+    first.actions = {1, 2, 1, 2, 4, 5, 0, 0};
+    ConsoleUI firstUi(first);
+    Menu(firstUi, catalog, file.path).run();
+    const auto partial = SaveService::loadFromFile(file.path);
+    CHECK(partial.phase == SavePhase::Recruitment);
+    CHECK(partial.armyA.size() == 2 && partial.armyB.empty());
+    if (partial.armyA.size() == 2) {
+        CHECK(partial.armyA[0].spec.kind == UnitKind::Mage);
+        CHECK(partial.armyA[0].spec.ranged == 60 && partial.armyA[0].spec.range == 3);
+        CHECK(partial.armyA[1].spec.kind == UnitKind::Healer);
+        CHECK(partial.armyA[1].spec.ranged == 8 && partial.armyA[1].spec.range == 3);
+    }
+    bool mageButton = false, healerButton = false, separateExit = true;
+    for (const auto& menu : first.menus) for (const auto& choice : menu) {
+        if (choice.label == "Купить: Маг") mageButton = mageButton || (choice.value != 0 && choice.enabled);
+        if (choice.label == "Купить: Целитель") healerButton = healerButton || (choice.value != 0 && choice.enabled);
+        if (choice.value == 0 && choice.label.find("Купить:") == 0) separateExit = false;
+    }
+    CHECK(mageButton && healerButton && separateExit);
+    ScriptView second;
+    second.actions = {2, 1, 2, 1, 30, 2, 4, 30, 0, 0};
+    ConsoleUI secondUi(second);
+    Menu(secondUi, catalog, file.path).run();
+    const auto restored = SaveService::loadFromFile(file.path);
+    CHECK(restored.phase == SavePhase::Battle && restored.turn == 0);
+    CHECK(recordsText(restored.armyA) == recordsText(partial.armyA));
+    CHECK(restored.armyB.size() == 1 && restored.armyB.front().spec.kind == UnitKind::Mage);
+
+    SaveFile limited;
+    ScriptView budget;
+    budget.numbers = {40, 9};
+    budget.actions = {1, 2, 1, 2, 4, 5, 1, 30, 1, 0, 0};
+    ConsoleUI budgetUi(budget);
+    Menu(budgetUi, catalog, limited.path).run();
+    const auto saved = SaveService::loadFromFile(limited.path);
+    CHECK(budget.hasMessage("Недостаточно бюджета"));
+    CHECK(saved.armyA.size() == 2);
+    std::mt19937 expectedNames(9);
+    const auto mageName = ArmyGenerator::randomName(expectedNames);
+    const auto lightName = ArmyGenerator::randomName(expectedNames);
+    if (saved.armyA.size() == 2) {
+        CHECK(saved.armyA[0].name == mageName && saved.armyA[1].name == lightName);
+    }
+}
+
+void testArmyFactorySelection(const UnitCatalog& catalog) {
+    for (const auto action : {1u, 3u}) {
+        SaveFile file;
+        ScriptView view;
+        view.numbers = {200, 77};
+        view.actions = {1, 2, 1, action, action, 0, 0};
+        ConsoleUI ui(view);
+        Menu(ui, catalog, file.path).run();
+        const auto saved = SaveService::loadFromFile(file.path);
+        const auto algorithm = action == 1 ? ArmyAlgorithm::Random : ArmyAlgorithm::Compact;
+        const auto factory = makeArmyFactory(algorithm, catalog);
+        std::mt19937 rng(77);
+        Army a = factory->createArmy(200, rng), b = factory->createArmy(200, rng);
+        CHECK(recordsText(saved.armyA) == recordsText(SaveService::snapshot(a)));
+        CHECK(recordsText(saved.armyB) == recordsText(SaveService::snapshot(b)));
+        CHECK(view.hasMessage(factory->title()));
+    }
+}
+
+void testConsoleSpecialUnits(const UnitCatalog& catalog) {
+    SaveFile file;
+    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n8\n3\n0\n0\n");
+    std::ostringstream output;
+    ConsoleUI ui(input, output);
+    Menu(ui, catalog, file.path).run();
+    const auto saved = SaveService::loadFromFile(file.path);
+    CHECK(saved.armyA.size() == 2 && saved.phase == SavePhase::Battle);
+    CHECK(contains(output.str(), "Купить: Маг") && contains(output.str(), "Купить: Целитель"));
+    CHECK(contains(output.str(), "Клонирование 60%") && contains(output.str(), "Лечение 8 HP"));
+    CHECK(contains(output.str(), "Сжатый набор"));
+    CHECK(contains(output.str(), "9 — Сохранить"));
+    // Catalog order and a smaller set of unit types must not change purchase action mapping.
+    std::istringstream source("version;1\nhealer;18;2;8;3;0;22\nmage;14;2;60;3;0;25\n");
+    const auto reordered = UnitCatalog::loadFromStream(source, "reordered");
+    SaveFile other;
+    std::istringstream commands("1\n70\n9\n2\n1\n2\n1\n2\n5\n1\n0\n0\n");
+    std::ostringstream text;
+    ConsoleUI reorderedUi(commands, text);
+    Menu(reorderedUi, reordered, other.path).run();
+    const auto result = SaveService::loadFromFile(other.path);
+    CHECK(result.armyA.size() == 2);
+    if (result.armyA.size() == 2) {
+        CHECK(result.armyA[0].spec.kind == UnitKind::Healer);
+        CHECK(result.armyA[1].spec.kind == UnitKind::Mage);
     }
 }
 
@@ -365,6 +464,9 @@ int main() {
     testAutosaveFailureIsReported(catalog);
     testCooperativePrivacy(catalog);
     testConsoleControls();
+    testSpecialUnitRecruitment(catalog);
+    testArmyFactorySelection(catalog);
+    testConsoleSpecialUnits(catalog);
     testConsoleCancellationAndNavigation(catalog);
     testClosingViewKeepsCompletedTurn(catalog);
     std::cout << (failures == 0 ? "All session tests passed\n" : "Session tests failed\n");
