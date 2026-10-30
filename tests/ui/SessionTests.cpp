@@ -92,9 +92,9 @@ std::string armyText(Army& army) {
 SaveData initialBattle(const UnitCatalog& catalog) {
     std::mt19937 rng(9);
     ArmyGenerator generator(catalog);
-    Army a = generator.generate(70, rng), b = generator.generate(70, rng);
+    Army a = generator.generate(200, rng), b = generator.generate(200, rng);
     SaveData data;
-    data.costLimit = 70;
+    data.costLimit = 200;
     data.seed = 42;
     data.armyA = SaveService::snapshot(a);
     data.armyB = SaveService::snapshot(b);

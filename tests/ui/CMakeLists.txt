@@ -27,7 +27,11 @@ add_library(test_support STATIC ${CoreSources}
     "${Root}/src/UnitCatalog.cpp" "${Root}/src/UnitFactory.cpp"
     "${Root}/src/ArmyGenerator.cpp" "${Root}/src/SaveService.cpp"
     "${Root}/src/BattleReplay.cpp" "${Root}/src/ArmyBuilder.cpp"
-    "${Root}/src/SaveSlots.cpp")
+    "${Root}/src/SaveSlots.cpp"
+    "${Root}/src/Mage.cpp" "${Root}/src/Healer.cpp"
+    "${Root}/src/UnitDecorator.cpp"
+    "${Root}/src/BuffGiver.cpp" "${Root}/src/UnitCreator.cpp"
+    "${Root}/src/MilitaryAcademy.cpp" "${Root}/src/ArmyFactory.cpp")
 target_include_directories(test_support PUBLIC "${Root}/include")
 
 add_executable(ui_tests UiTests.cpp
@@ -53,7 +57,10 @@ add_executable(save_ui_tests SaveUiTests.cpp
     "${Root}/src/TextInput.cpp" "${Root}/src/SaveLocation.cpp")
 target_link_libraries(save_ui_tests PRIVATE test_support)
 
-foreach(Target test_support ui_tests data_tests session_tests save_ui_tests)
+add_executable(pattern_tests "${Root}/tests/PatternTests.cpp")
+target_link_libraries(pattern_tests PRIVATE test_support)
+
+foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
         if(NOT Target STREQUAL "test_support")
@@ -69,4 +76,5 @@ add_test(NAME ui COMMAND ui_tests)
 add_test(NAME data COMMAND data_tests)
 add_test(NAME session COMMAND session_tests)
 add_test(NAME save_ui COMMAND save_ui_tests)
-set_tests_properties(ui data session save_ui PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME patterns COMMAND pattern_tests)
+set_tests_properties(ui data session save_ui patterns PROPERTIES WORKING_DIRECTORY "${Root}")

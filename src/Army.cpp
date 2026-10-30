@@ -5,6 +5,17 @@ void Army::add(std::unique_ptr<Unit> unit) {
     units_.push_back(std::move(unit));
 }
 
+void Army::insert(std::size_t index, std::unique_ptr<Unit> unit) {
+    if (index > units_.size()) index = units_.size();
+    units_.insert(units_.begin() + static_cast<std::ptrdiff_t>(index), std::move(unit));
+}
+
+std::unique_ptr<Unit> Army::replace(std::size_t index, std::unique_ptr<Unit> unit) {
+    std::unique_ptr<Unit> old = std::move(units_.at(index));
+    units_[index] = std::move(unit);
+    return old;
+}
+
 Unit* Army::at(std::size_t i) {
     return units_.at(i).get();
 }

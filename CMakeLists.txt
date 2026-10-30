@@ -36,6 +36,13 @@ add_executable(shieldwall
     src/SaveSlots.cpp
     src/TextInput.cpp
     src/SaveLocation.cpp
+    src/Mage.cpp
+    src/Healer.cpp
+    src/UnitDecorator.cpp
+    src/BuffGiver.cpp
+    src/UnitCreator.cpp
+    src/MilitaryAcademy.cpp
+    src/ArmyFactory.cpp
 )
 
 target_include_directories(shieldwall PRIVATE include)
