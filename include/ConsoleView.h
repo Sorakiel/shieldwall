@@ -23,4 +23,6 @@ public:
 private:
     std::istream& in_;
     std::ostream& out_;
+    bool lastLineBlank_ = true;
+    void separateBlock();
 };
