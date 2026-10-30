@@ -66,6 +66,8 @@ const KindToken KindTokens[] = {
     {UnitKind::Light, "light"},
     {UnitKind::Heavy, "heavy"},
     {UnitKind::Archer, "archer"},
+    {UnitKind::Mage, "mage"},
+    {UnitKind::Healer, "healer"},
 };
 
 }  // namespace
@@ -96,13 +98,32 @@ void validateSpec(const UnitSpec& spec) {
     if (spec.melee < 0 || spec.ranged < 0 || spec.range < 0 || spec.defense < 0) {
         throw DataError("атака, дальность и защита не могут быть отрицательными");
     }
-    // Без этой проверки лучник с нулевой дальностью молча никогда не стреляет
-    if (spec.kind == UnitKind::Archer) {
+    // Без этой проверки лучник с нулевой дальностью молча никогда не стреляет.
+    // У мага и целителя в тех же колонках лежат сила (шанс или лечение) и радиус.
+    switch (spec.kind) {
+    case UnitKind::Archer:
         if (spec.ranged == 0 || spec.range == 0) {
             throw DataError("у лучника выстрел и дальность должны быть больше нуля");
         }
-    } else if (spec.ranged != 0 || spec.range != 0) {
-        throw DataError("у юнита без стрельбы выстрел и дальность должны быть равны 0");
+        break;
+    case UnitKind::Mage:
+        if (spec.ranged == 0 || spec.range == 0) {
+            throw DataError("у мага сила и дальность должны быть больше нуля");
+        }
+        if (spec.ranged > 100) {
+            throw DataError("сила мага - шанс успеха в процентах, не больше 100");
+        }
+        break;
+    case UnitKind::Healer:
+        if (spec.ranged == 0 || spec.range == 0) {
+            throw DataError("у целителя сила и дальность должны быть больше нуля");
+        }
+        break;
+    default:
+        if (spec.ranged != 0 || spec.range != 0) {
+            throw DataError("у юнита без стрельбы выстрел и дальность должны быть равны 0");
+        }
+        break;
     }
 }
 

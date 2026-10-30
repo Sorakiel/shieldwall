@@ -3,6 +3,8 @@
 #include <fstream>
 #include <sstream>
 #include "ArmyGenerator.h"
+#include "Healer.h"
+#include "Mage.h"
 
 namespace {
 
@@ -152,6 +154,12 @@ std::vector<UnitRecord> SaveService::snapshot(Army& army) {
         if (const Archer* archer = dynamic_cast<const Archer*>(unit)) {
             record.spec.ranged = archer->rangedAttack();
             record.spec.range = archer->range();
+        } else if (const Mage* mage = dynamic_cast<const Mage*>(unit)) {
+            record.spec.ranged = mage->power();   // сила мага лежит в колонке «выстрел»
+            record.spec.range = mage->range();
+        } else if (const Healer* healer = dynamic_cast<const Healer*>(unit)) {
+            record.spec.ranged = healer->power();
+            record.spec.range = healer->range();
         }
         records.push_back(record);
     }
