@@ -247,7 +247,7 @@ void testAutosaveFailureIsReported(const UnitCatalog& catalog) {
     { std::ofstream out(file.path); out << "not a directory"; }
     ScriptView view;
     view.numbers = {40, 42};
-    view.actions = {1, 1, 1, 1, 1, 0};
+    view.actions = {1,1,1,1,30,1,30,0};
     ConsoleUI ui(view);
     Menu(ui, catalog, file.path + "/autosave.txt").run();
     CHECK(view.hasMessage("Не удалось создать папку автосохранения"));
@@ -299,6 +299,12 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
         CHECK(!ui.readText("Имя: ", 64));
         CHECK(ui.readText("Имя: ", 64) == "0");
     }
+    {
+        std::istringstream input("/back\n0\n/back\n");std::ostringstream output;ConsoleUI ui(input,output);
+        bool back=false;try{ui.readNumberCancelable("Seed: ",0,100,NumberCancel::Previous);}catch(const ViewBack&){back=true;}
+        CHECK(back);CHECK(ui.readNumberCancelable("Seed: ",0,100,NumberCancel::Previous)==0u);
+        back=false;try{ui.handoff(0);}catch(const ViewBack&){back=true;}CHECK(back);
+    }
     for (const auto& script : {"1\n/menu\n0\n", "1\n70\n/menu\n0\n",
                                "1\n70\n0\n0\n0\n", "1\n70\n0\n2\n0\n0\n"}) {
         SaveFile file;
@@ -314,7 +320,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
     {
         SaveFile file;
         // Cancel remove, and both the source and destination position of move.
-        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n8\n1\n0\n0\n");
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n8\n1\n4\n0\n0\n");
         std::ostringstream output;
         ConsoleUI ui(input, output);
         Menu(ui, catalog, file.path).run();
@@ -329,7 +335,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
         ScriptView view;
         view.numbers = {70, 42};
         // Ready -> edit -> confirm each existing army without entering manual recruitment.
-        view.actions = {1, 2, 1, 1, 1, 2, 30, 30, 0, 0};
+        view.actions = {1,2,1,1,30,1,30,2,30,30,0,0};
         ConsoleUI ui(view);
         Menu(ui, catalog, file.path).run();
         CHECK(view.actions.empty());
@@ -391,7 +397,7 @@ void testArmyFactorySelection(const UnitCatalog& catalog) {
         SaveFile file;
         ScriptView view;
         view.numbers = {200, 77};
-        view.actions = {1, 2, 1, action, action, 0, 0};
+        view.actions = {1,2,1,action,30,action,30,0,0};
         ConsoleUI ui(view);
         Menu(ui, catalog, file.path).run();
         const auto saved = SaveService::loadFromFile(file.path);
@@ -407,7 +413,7 @@ void testArmyFactorySelection(const UnitCatalog& catalog) {
 
 void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     SaveFile file;
-    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n8\n3\n0\n0\n");
+    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n8\n3\n4\n0\n0\n");
     std::ostringstream output;
     ConsoleUI ui(input, output);
     Menu(ui, catalog, file.path).run();
@@ -421,7 +427,7 @@ void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     std::istringstream source("version;1\nhealer;18;2;8;3;0;22\nmage;14;2;60;3;0;25\n");
     const auto reordered = UnitCatalog::loadFromStream(source, "reordered");
     SaveFile other;
-    std::istringstream commands("1\n70\n9\n2\n1\n2\n1\n2\n5\n1\n0\n0\n");
+    std::istringstream commands("1\n70\n9\n2\n1\n2\n1\n2\n5\n1\n4\n0\n0\n");
     std::ostringstream text;
     ConsoleUI reorderedUi(commands, text);
     Menu(reorderedUi, reordered, other.path).run();

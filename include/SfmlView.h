@@ -7,6 +7,10 @@ class SfmlView final : public View {
 public:
     explicit SfmlView(const std::filesystem::path& assetDirectory);
     ~SfmlView() override;
+    void setPlaybackHandler(PlaybackHandler handler) override;
+    std::optional<ArmyEdit> takeArmyEdit() override;
+    std::optional<std::uint32_t> readSetupNumber(const std::string& prompt,
+        std::uint32_t min, std::uint32_t max, NumberCancel cancel, std::uint32_t initial) override;
     void setStage(ViewStage stage) override;
     void setBattleProgress(int turn, BattleMode mode) override;
     TurnAction waitForTurn(BattleMode mode) override;

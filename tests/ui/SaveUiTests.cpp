@@ -116,7 +116,7 @@ public:
 
 void ready(ScriptView& view, std::uint32_t mode = 2) {
     view.numbers = {70, 42};
-    view.actions = {1, mode, 1, 1, 1};
+    view.actions = {1,mode,1,1,30,1,30};
 }
 void run(ScriptView& view, const UnitCatalog& catalog, const SaveDirectory& dir) {
     ConsoleUI ui(view);
@@ -427,6 +427,21 @@ void testLoadClearsPreviousDisplay(const UnitCatalog& catalog) {
     }
 }
 
+void testBackFromLoadedModeRestoresResult(const UnitCatalog& catalog) {
+    SaveDirectory dir;SaveService::saveToFile(battle(catalog),dir.named("candidate").string());
+    ScriptView view;ready(view,1);
+    view.actions.insert(view.actions.end(),{1,2,2,1,uiAction::Back,0,0,0});
+    bool restored=false;
+    view.beforeChoice=[&] {
+        if(view.stage==ViewStage::Result && view.cleanModeScreens.size()>=2) {
+            CHECK(view.displayedArmy && view.displayedResult);restored=true;
+        }
+    };
+    run(view,catalog,dir);
+    CHECK(restored && view.actions.empty());
+    CHECK(SaveService::loadFromFile(dir.autosave()).phase==SavePhase::Result);
+}
+
 void testCancelLoadedSettings(const UnitCatalog& catalog) {
     for (const auto phase : {SavePhase::Recruitment, SavePhase::Battle}) {
         SaveDirectory dir;
@@ -586,6 +601,7 @@ int main() {
         testUtf8InputAndConsole();
         testDeleteSaves(catalog);
         testLoadClearsPreviousDisplay(catalog);
+        testBackFromLoadedModeRestoresResult(catalog);
         testCancelLoadedSettings(catalog);
         testLoadNoticeSurvivesReturn(catalog);
         testSaveLocationAndLegacyImport(catalog);

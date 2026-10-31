@@ -12,6 +12,11 @@ struct SfmlView::Impl {
     TextInput textInput;
     ShortcutGuard shortcuts;
     presentation::Playback playback;
+    PlaybackHandler playbackHandler;
+    std::optional<ArmyEdit> pendingEdit;
+    std::optional<sfmlui::RosterTransition> nextTransition;
+    std::optional<std::uint32_t> numberDefault;
+    sf::Clock uiFrame;
     sf::Clock ambience;
     explicit Impl(const std::filesystem::path& assetDirectory) : scene(assetDirectory) {
         sf::ContextSettings settings;
@@ -38,6 +43,12 @@ struct SfmlView::Impl {
         if (!window.isOpen())
             throw ViewClosed{};
         state.ambience = ambience.getElapsedTime().asSeconds();
+        const auto dt = uiFrame.restart().asSeconds();
+        if (state.rosterTransition) {
+            state.rosterTransition->progress = std::min(1.f, state.rosterTransition->progress + dt / .26f);
+            if (state.rosterTransition->progress >= 1.f)
+                state.rosterTransition.reset();
+        }
         if (state.enteringText)
             state.input = textInput.value();
         window.clear(sf::Color(10, 16, 20));
@@ -130,6 +141,7 @@ struct SfmlView::Impl {
             if (event->is<sf::Event::FocusLost>() || event->is<sf::Event::FocusGained>())
                 shortcuts.cancel();
             if (!window.hasFocus()) {
+                state.drag.reset();
                 shortcuts.cancel();
                 continue;
             }
@@ -153,8 +165,8 @@ struct SfmlView::Impl {
                 const bool mods = key->alt || key->control || key->shift || key->system || modified();
                 if (mods || modifier(key->code))
                     shortcuts.cancel();
-                if (state.waiting && !state.playing && !state.enteringNumber && !state.enteringText &&
-                    key->code == K::S)
+                if ((state.waiting || state.playing) && state.choices.empty() && !state.enteringNumber &&
+                    !state.enteringText && key->code == K::S)
                     shortcuts.pressSave(true, mods);
                 if ((state.enteringNumber || state.enteringText) && key->control && !key->alt &&
                     !key->system && key->code == K::A) {
@@ -164,16 +176,36 @@ struct SfmlView::Impl {
                 if (!ShortcutGuard::plain(true, mods))
                     continue;
                 if (key->code == K::Escape) {
-                    if (state.enteringNumber || state.enteringText)
-                        return sfmlui::Cancel;
-                    if (state.playing) {
-                        state.paused = !state.paused;
+                    if (state.drag) {
+                        const auto drag = *state.drag;
+                        state.drag.reset();
+                        const auto& units = state.battle.armies[state.recruitment.activeTeam].units;
+                        if (drag.active && drag.from < units.size()) {
+                            state.rosterTransition = sfmlui::RosterTransition{
+                                ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from}, units[drag.from], 0,
+                                sf::Vector2f(std::clamp(drag.pointer.x - 69.f, 48.f, 1248.f),
+                                             std::clamp(drag.pointer.y - 35.f, 570.f, 620.f))};
+                            uiFrame.restart();
+                        }
                         continue;
                     }
+                    if (state.handoff >= 0)
+                        return static_cast<int>(uiAction::Back);
+                    if (state.enteringText)
+                        return sfmlui::Cancel;
+                    if (state.enteringNumber)
+                        return state.numberCancel == NumberCancel::Previous ? static_cast<int>(uiAction::Back)
+                                                                            : sfmlui::Cancel;
+                    if (hasChoice(uiAction::Back))
+                        return static_cast<int>(uiAction::Back);
                     if (std::any_of(state.choices.begin(), state.choices.end(), [](const MenuChoice& c) {
                             return c.value == 0 && c.enabled && c.escapeCancel;
                         }))
                         return 0;
+                    if (state.playing) {
+                        state.paused = !state.paused;
+                        continue;
+                    }
                     window.close();
                     throw ViewClosed{};
                 }
@@ -195,7 +227,12 @@ struct SfmlView::Impl {
                     }
                     if (key->code == K::Enter)
                         return sfmlui::Submit;
+                } else if (!state.choices.empty()) {
+                    if (key->code == K::Enter && hasChoice(1))
+                        return 1;
                 } else if (state.playing) {
+                    if (key->code == K::A)
+                        return sfmlui::Auto;
                     if (key->code == K::Space)
                         return sfmlui::Pause;
                 } else {
@@ -228,12 +265,73 @@ struct SfmlView::Impl {
                 } else if (!state.playing && !scene.saves(state) && pos.y >= 140 && pos.y < 736) {
                     const int team = state.recruiting ? state.recruitment.activeTeam : pos.x < 546 ? 0 : 1;
                     common(200 + team * 2 + (wheel->delta > 0 ? 0 : 1));
+                    if (state.drag)
+                        return std::nullopt; // Refresh page hit regions before a queued drop.
+                }
+            }
+            const bool editable = state.recruiting &&
+                                  state.recruitment.screen == RecruitmentScreen::Academy &&
+                                  !state.enteringNumber && !state.enteringText;
+            if (const auto* down = event->getIf<sf::Event::MouseButtonPressed>()) {
+                if (editable && down->button == sf::Mouse::Button::Left) {
+                    const auto pos = window.mapPixelToCoords(down->position, camera);
+                    const bool overButton = std::any_of(
+                        scene.buttons().begin(), scene.buttons().end(),
+                        [&](const sfmlui::Button& b) { return b.enabled && b.bounds.contains(pos); });
+                    if (!overButton)
+                        for (const auto& card : scene.rosterCards())
+                            if (card.bounds.contains(pos)) {
+                                state.drag = sfmlui::DragState{card.index, pos, pos, false};
+                                break;
+                            }
+                }
+            }
+            if (const auto* move = event->getIf<sf::Event::MouseMoved>()) {
+                if (state.drag) {
+                    auto& drag = *state.drag;
+                    drag.pointer = window.mapPixelToCoords(move->position, camera);
+                    const auto d = drag.pointer - drag.origin;
+                    if (d.x * d.x + d.y * d.y > 36)
+                        drag.active = true;
                 }
             }
             if (const auto* click = event->getIf<sf::Event::MouseButtonReleased>()) {
                 if (click->button != sf::Mouse::Button::Left)
                     continue;
                 const auto pos = window.mapPixelToCoords(click->position, camera);
+                if (state.drag) {
+                    const auto drag = *state.drag;
+                    state.drag.reset();
+                    if (drag.active) {
+                        if (pos.y >= 570 && pos.y <= 744 && pos.x >= 48 && pos.x <= 1250 &&
+                            !scene.rosterCards().empty()) {
+                            const auto target = std::min_element(
+                                scene.rosterCards().begin(), scene.rosterCards().end(),
+                                [&](const sfmlui::RosterCard& a, const sfmlui::RosterCard& b) {
+                                    return std::abs(pos.x - a.bounds.position.x - 69) <
+                                           std::abs(pos.x - b.bounds.position.x - 69);
+                                });
+                            if (target->index != drag.from) {
+                                pendingEdit = ArmyEdit{ArmyEdit::Kind::Move, drag.from, target->index};
+                                const auto& old = state.battle.armies[state.recruitment.activeTeam].units;
+                                nextTransition = sfmlui::RosterTransition{
+                                    *pendingEdit, old[drag.from], 0,
+                                    sf::Vector2f(std::clamp(pos.x - 69.f, 48.f, 1248.f),
+                                                 std::clamp(pos.y - 35.f, 570.f, 620.f))};
+                                return static_cast<int>(uiAction::ArmyEdit);
+                            }
+                        }
+                        const auto& units = state.battle.armies[state.recruitment.activeTeam].units;
+                        if (drag.from < units.size()) {
+                            state.rosterTransition = sfmlui::RosterTransition{
+                                ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from}, units[drag.from], 0,
+                                sf::Vector2f(std::clamp(pos.x - 69.f, 48.f, 1248.f),
+                                             std::clamp(pos.y - 35.f, 570.f, 620.f))};
+                            uiFrame.restart();
+                        }
+                        continue;
+                    }
+                }
                 for (const auto& b : scene.buttons())
                     if (b.enabled && b.bounds.contains(pos))
                         return b.action;
@@ -268,8 +366,21 @@ struct SfmlView::Impl {
         sf::Clock frame;
         while (!state.effect->finished()) {
             draw();
-            if (const auto action = poll())
-                common(*action);
+            if (const auto action = poll()) {
+                if (*action == sfmlui::Auto || *action == sfmlui::Save || *action == 0) {
+                    const auto request = *action == 0              ? TurnAction::Exit
+                                         : *action == sfmlui::Save ? TurnAction::Save
+                                         : state.automatic         ? TurnAction::Manual
+                                                                   : TurnAction::Automatic;
+                    if (playbackHandler && !playbackHandler(request)) {
+                        state.effect.reset();
+                        state.playing = false;
+                        throw PlaybackStopped{};
+                    }
+                    frame.restart();
+                } else
+                    common(*action);
+            }
             const float dt = std::min(frame.restart().asSeconds(), .075f);
             if (!state.paused && window.hasFocus() && state.effect->advance(dt * state.speed)) {
                 playback.commit(state.battle, *state.effect);
@@ -281,8 +392,24 @@ struct SfmlView::Impl {
         draw();
     }
 };
-SfmlView::SfmlView(const std::filesystem::path& assetDirectory) : impl_(std::make_unique<Impl>(assetDirectory)) {}
+SfmlView::SfmlView(const std::filesystem::path& assetDirectory)
+    : impl_(std::make_unique<Impl>(assetDirectory)) {}
 SfmlView::~SfmlView() = default;
+void SfmlView::setPlaybackHandler(PlaybackHandler handler) {
+    impl_->playbackHandler = std::move(handler);
+}
+std::optional<ArmyEdit> SfmlView::takeArmyEdit() {
+    auto edit = impl_->pendingEdit;
+    impl_->pendingEdit.reset();
+    return edit;
+}
+std::optional<std::uint32_t> SfmlView::readSetupNumber(const std::string& p, std::uint32_t min,
+                                                       std::uint32_t max, NumberCancel cancel,
+                                                       std::uint32_t initial) {
+    impl_->numberDefault = initial;
+    return readNumberCancelable(p, min, max, cancel);
+}
+
 void SfmlView::clearDisplay() {
     const auto speed = impl_->state.speed;
     impl_->state = sfmlui::State{};
@@ -302,7 +429,7 @@ void SfmlView::setStage(ViewStage stage) {
         impl_->state.result.clear();
         impl_->state.winner = -1;
     }
-    if (stage == ViewStage::Recruitment) {
+    if (stage == ViewStage::Recruitment && previous != stage) {
         impl_->state.turn = 0;
         impl_->state.offsets = {};
     }
@@ -323,7 +450,8 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt, std
     s.prompt = prompt;
     s.selectAll = true;
     s.error.clear();
-    s.input = std::to_string(std::clamp(min == 0 ? 42u : 120u, min, max));
+    s.input = std::to_string(std::clamp(impl_->numberDefault.value_or(min == 0 ? 42u : 120u), min, max));
+    impl_->numberDefault.reset();
     impl_->shortcuts.cancel();
     impl_->window.setKeyRepeatEnabled(true);
     while (true) {
@@ -331,7 +459,12 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt, std
         const auto action = impl_->poll();
         if (!action)
             continue;
-        if (*action == sfmlui::Cancel) {
+        if (*action == static_cast<int>(uiAction::Back)) {
+            s.enteringNumber = false;
+            impl_->window.setKeyRepeatEnabled(false);
+            throw ViewBack{};
+        }
+        if (*action == sfmlui::Cancel || *action == 0) {
             s.enteringNumber = false;
             impl_->window.setKeyRepeatEnabled(false);
             return std::nullopt;
@@ -377,6 +510,21 @@ std::optional<std::uint32_t> SfmlView::choose(const std::vector<MenuChoice>& cho
     while (true) {
         impl_->draw();
         if (const auto action = impl_->poll()) {
+            if (s.recruiting && s.recruitment.screen == RecruitmentScreen::Academy) {
+                const auto& units = s.battle.armies[s.recruitment.activeTeam].units;
+                if (*action >= sfmlui::RemoveBase &&
+                    static_cast<std::size_t>(*action - sfmlui::RemoveBase) < units.size()) {
+                    const auto from = static_cast<std::size_t>(*action - sfmlui::RemoveBase);
+                    impl_->pendingEdit = ArmyEdit{ArmyEdit::Kind::Remove, from, from};
+                    impl_->nextTransition = sfmlui::RosterTransition{*impl_->pendingEdit, units[from], 0, {}};
+                    s.choices.clear();
+                    return uiAction::ArmyEdit;
+                }
+                if (*action == static_cast<int>(uiAction::ArmyEdit)) {
+                    s.choices.clear();
+                    return uiAction::ArmyEdit;
+                }
+            }
             if (*action >= 0 && impl_->hasChoice(static_cast<std::uint32_t>(*action))) {
                 s.choices.clear();
                 return static_cast<std::uint32_t>(*action);
@@ -404,6 +552,16 @@ void SfmlView::showArmies(const BattleSnapshot& frame) {
     impl_->draw();
 }
 void SfmlView::showRecruitment(const RecruitmentSnapshot& frame) {
+    if (impl_->nextTransition && frame.screen == RecruitmentScreen::Academy) {
+        impl_->state.rosterTransition = impl_->nextTransition;
+        impl_->nextTransition.reset();
+        impl_->uiFrame.restart();
+    }
+    if (frame.screen != impl_->state.recruitment.screen ||
+        frame.activeTeam != impl_->state.recruitment.activeTeam) {
+        impl_->state.drag.reset();
+        impl_->state.rosterTransition.reset();
+    }
     impl_->state.recruitment = frame;
     impl_->state.battle.armies = frame.armies;
     impl_->state.recruiting = true;
@@ -456,9 +614,14 @@ bool SfmlView::handoff(int team) {
     impl_->state.handoff = team;
     while (true) {
         impl_->draw();
-        if (const auto action = impl_->poll())
+        if (const auto action = impl_->poll()) {
+            if (*action == static_cast<int>(uiAction::Back)) {
+                impl_->state.handoff = -1;
+                throw ViewBack{};
+            }
             if (*action == sfmlui::Submit)
                 break;
+        }
     }
     impl_->state.handoff = -1;
     return true;

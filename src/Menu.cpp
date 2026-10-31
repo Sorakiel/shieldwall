@@ -22,16 +22,21 @@ namespace {
 constexpr std::size_t savesPerPage = 6;
 
 std::string foldAscii(std::string value) {
-    for (auto& character : value) if (character >= 'A' && character <= 'Z') character += 'a' - 'A';
+    for (auto& character : value)
+        if (character >= 'A' && character <= 'Z')
+            character += 'a' - 'A';
     return value;
 }
 
 std::string saveLabel(const SaveSummary& summary) {
-    const std::string name = summary.name == SaveSlots::AutosaveName ?
-        "Автосохранение" : std::filesystem::path(summary.name).u8string();
-    if (!summary.valid) return name + "\nПовреждён: " + summary.error;
-    const std::string phase = summary.phase == SavePhase::Recruitment ? "Закупка" :
-        summary.phase == SavePhase::Battle ? "Бой" : "Итог";
+    const std::string name = summary.name == SaveSlots::AutosaveName
+                                 ? "Автосохранение"
+                                 : std::filesystem::path(summary.name).u8string();
+    if (!summary.valid)
+        return name + "\nПовреждён: " + summary.error;
+    const std::string phase = summary.phase == SavePhase::Recruitment ? "Закупка"
+                              : summary.phase == SavePhase::Battle    ? "Бой"
+                                                                      : "Итог";
     std::tm date{};
 #ifdef _WIN32
     const bool hasDate = localtime_s(&date, &summary.modified) == 0;
@@ -39,17 +44,20 @@ std::string saveLabel(const SaveSummary& summary) {
     const bool hasDate = localtime_r(&summary.modified, &date) != nullptr;
 #endif
     std::ostringstream text;
-    text << name << '\n' << phase << ", ход " << summary.turn
-         << " | лимит " << summary.costLimit << " | seed " << summary.seed << " | ";
-    if (hasDate) text << std::put_time(&date, "%d.%m.%Y %H:%M");
-    else text << "дата неизвестна";
+    text << name << '\n'
+         << phase << ", ход " << summary.turn << " | лимит " << summary.costLimit << " | seed "
+         << summary.seed << " | ";
+    if (hasDate)
+        text << std::put_time(&date, "%d.%m.%Y %H:%M");
+    else
+        text << "дата неизвестна";
     return text.str();
 }
 
 using Builders = std::array<std::unique_ptr<ArmyBuilder>, 2>;
 
-RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAcademy& academy,
-                                      int team, bool privateInput) {
+RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAcademy& academy, int team,
+                                     bool privateInput) {
     RecruitmentSnapshot frame;
     const ArmyBuilder& active = *builders[team];
     frame.activeTeam = team;
@@ -59,11 +67,12 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAca
     for (int index = 0; index < 2; ++index) {
         auto& army = frame.armies[index];
         army.name = EventFormatter::teamName(index);
-        if (privateInput && index != team) continue;
+        if (privateInput && index != team)
+            continue;
         army.totalCost = builders[index]->spent();
         for (const auto& record : builders[index]->units()) {
-            army.units.push_back({record.spec.kind, record.name, record.spec.maxHp,
-                                  record.spec.maxHp, record.spec.cost});
+            army.units.push_back(
+                {record.spec.kind, record.name, record.spec.maxHp, record.spec.maxHp, record.spec.cost});
         }
     }
     for (const auto& entry : academy.available()) {
@@ -77,19 +86,26 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAca
 
 std::uint32_t buyAction(UnitKind kind) {
     switch (kind) {
-    case UnitKind::Light: return 1;
-    case UnitKind::Heavy: return 2;
-    case UnitKind::Archer: return 3;
-    case UnitKind::Mage: return 4;
-    case UnitKind::Healer: return 5;
+    case UnitKind::Light:
+        return 1;
+    case UnitKind::Heavy:
+        return 2;
+    case UnitKind::Archer:
+        return 3;
+    case UnitKind::Mage:
+        return 4;
+    case UnitKind::Healer:
+        return 5;
     }
     return 0;
 }
 
-BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academy,
-                               UnitKind kind, std::mt19937& rng) {
-    if (!academy.offers(kind)) return BuildResult::UnknownKind;
-    if (!draft.canBuy(kind)) return BuildResult::NotEnoughBudget;
+BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academy, UnitKind kind,
+                               std::mt19937& rng) {
+    if (!academy.offers(kind))
+        return BuildResult::UnknownKind;
+    if (!draft.canBuy(kind))
+        return BuildResult::NotEnoughBudget;
     Army recruited;
     if (!academy.tryEnlist(recruited, kind, ArmyGenerator::randomName(rng), draft.remaining())) {
         return BuildResult::NotEnoughBudget;
@@ -104,10 +120,14 @@ BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academ
 
 const char* buildError(BuildResult result) {
     switch (result) {
-    case BuildResult::Ok: return "Состав обновлён.";
-    case BuildResult::NotEnoughBudget: return "Недостаточно бюджета для этого бойца.";
-    case BuildResult::UnknownKind: return "В каталоге нет этого типа бойца.";
-    case BuildResult::BadPosition: return "Такой позиции в строю нет.";
+    case BuildResult::Ok:
+        return "Состав обновлён.";
+    case BuildResult::NotEnoughBudget:
+        return "Недостаточно бюджета для этого бойца.";
+    case BuildResult::UnknownKind:
+        return "В каталоге нет этого типа бойца.";
+    case BuildResult::BadPosition:
+        return "Такой позиции в строю нет.";
     }
     return "Не удалось изменить состав.";
 }
@@ -120,12 +140,14 @@ void clearSession(BattleSession& session) {
     session.turn = 0;
 }
 
-}  // namespace
+} // namespace
 
 void Menu::run(const std::vector<std::string>& initialMessages) {
-    if (catalog_.specs().empty()) throw DataError("В каталоге нет типов юнитов");
-    const auto cheapest = std::min_element(catalog_.specs().begin(), catalog_.specs().end(),
-        [](const UnitSpec& a, const UnitSpec& b) { return a.cost < b.cost; });
+    if (catalog_.specs().empty())
+        throw DataError("В каталоге нет типов юнитов");
+    const auto cheapest =
+        std::min_element(catalog_.specs().begin(), catalog_.specs().end(),
+                         [](const UnitSpec& a, const UnitSpec& b) { return a.cost < b.cost; });
     const auto minBudget = static_cast<std::uint32_t>(cheapest->cost);
     MilitaryAcademy academy(catalog_);
     Builders builders;
@@ -138,9 +160,15 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
     State state = State::Welcome;
     State loadReturn = State::Welcome;
     bool resultSaved = false;
+    int setupStep = 0, recruitTeam = 0, handoffReturn = -1;
+    std::uint32_t setupBudget = 120, setupSeed = 42;
+    bool needHandoff = true, draftInitialized = false;
+    RecruitmentScreen recruitScreen = RecruitmentScreen::Methods;
+    ArmyAlgorithm generatedAlgorithm = ArmyAlgorithm::Random;
     std::vector<std::string> pendingMessages = initialMessages;
     auto showPendingMessages = [&] {
-        for (const auto& text : pendingMessages) ui_.message(text);
+        for (const auto& text : pendingMessages)
+            ui_.message(text);
         pendingMessages.clear();
     };
     const auto parent = std::filesystem::path(autosavePath_).parent_path();
@@ -168,14 +196,15 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             try {
                 const auto suggestion = SaveSlots::suggestName(saveDir);
                 const auto typed = ui_.readText("Имя сохранения [" + suggestion + "]: ", 64);
-                if (!typed) return;
+                if (!typed)
+                    return;
                 const auto name = typed->empty() ? suggestion : *typed;
                 // SaveSlots проверяет имя; путь из UTF-8 сохраняет кириллицу на Windows.
                 SaveSlots::pathFor(saveDir, name);
                 const auto path = parent / std::filesystem::u8path(name + ".txt");
                 if (foldAscii(name) == SaveSlots::AutosaveName ||
                     foldAscii(path.filename().u8string()) ==
-                    foldAscii(std::filesystem::path(autosavePath_).filename().u8string())) {
+                        foldAscii(std::filesystem::path(autosavePath_).filename().u8string())) {
                     throw DataError("Это имя зарезервировано для автосохранения");
                 }
                 if (std::filesystem::exists(path)) {
@@ -185,7 +214,8 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                     }
                     ui_.message("Сохранение «" + name + "» уже существует.");
                     const auto choice = ui_.choose({{1, "Перезаписать"}, {0, "Отмена", true, true}});
-                    if (!choice || *choice == 0) return;
+                    if (!choice || *choice == 0)
+                        return;
                 }
                 store(path.string(), phase, turn);
                 ui_.message("Сохранено: " + name + " (ход " + std::to_string(turn) + ").");
@@ -219,44 +249,52 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             const auto end = std::min(saves.size(), (page + 1) * savesPerPage);
             for (std::size_t index = page * savesPerPage; index < end; ++index) {
                 const auto label = saveLabel(saves[index]);
-                choices.push_back({static_cast<std::uint32_t>(index + 1), label,
-                                   deleting || saves[index].valid});
-                if (!saves[index].valid) ui_.message(label);
+                choices.push_back(
+                    {static_cast<std::uint32_t>(index + 1), label, deleting || saves[index].valid});
+                if (!saves[index].valid)
+                    ui_.message(label);
             }
             choices.push_back({previousPage, "Назад по страницам", page > 0});
             choices.push_back({nextPage, "Далее", end < saves.size()});
             choices.push_back({toggleDelete, deleting ? "К загрузке" : "Удалить сохранения"});
-            choices.push_back({0, "Отмена", true, true});
+            choices.push_back({0, "Назад", true, true});
             const auto action = ui_.choose(choices);
-            if (!action || *action == 0) return std::nullopt;
-            if (*action == toggleDelete) { deleting = !deleting; continue; }
+            if (!action || *action == 0)
+                return std::nullopt;
+            if (*action == toggleDelete) {
+                deleting = !deleting;
+                continue;
+            }
             if (*action == nextPage) {
-                if (end < saves.size()) ++page;
+                if (end < saves.size())
+                    ++page;
             } else if (*action == previousPage) {
-                if (page > 0) --page;
+                if (page > 0)
+                    --page;
             } else if (*action <= saves.size() && *action > page * savesPerPage && *action <= end) {
                 const auto& selected = saves[*action - 1];
                 if (!deleting) {
-                    if (selected.valid) return selected.path;
+                    if (selected.valid)
+                        return selected.path;
                     continue;
                 }
                 ui_.message("Удалить сохранение «" + selected.name + "»? Это действие нельзя отменить.");
                 if (selected.name == SaveSlots::AutosaveName) {
                     ui_.message("Автосохранение появится снова при следующем сохранении прогресса.");
                 }
-                const auto confirm = ui_.choose({{1, "Удалить сохранение"},
-                                                 {0, "Отмена", true, true}});
-                if (!confirm || *confirm == 0) continue;
+                const auto confirm = ui_.choose({{1, "Удалить сохранение"}, {0, "Отмена", true, true}});
+                if (!confirm || *confirm == 0)
+                    continue;
                 const std::filesystem::path file(selected.path);
                 // Delete only a .txt file enumerated directly in the saves directory.
-                if (file.extension() != ".txt" ||
-                    !std::filesystem::equivalent(file.parent_path(), saveDir)) {
+                if (file.extension() != ".txt" || !std::filesystem::equivalent(file.parent_path(), saveDir)) {
                     throw DataError("Файл находится вне папки сохранений");
                 }
                 std::error_code error;
                 const bool removed = std::filesystem::remove(file, error);
-                ui_.message(error ? "Не удалось удалить: " + error.message() :
-                            removed ? "Сохранение удалено." : "Сохранение уже отсутствует.");
+                ui_.message(error     ? "Не удалось удалить: " + error.message()
+                            : removed ? "Сохранение удалено."
+                                      : "Сохранение уже отсутствует.");
             }
         }
     };
@@ -266,20 +304,50 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         checkpoint(SavePhase::Recruitment, 0);
     };
     auto selectMode = [&] {
-        ui_.message("Выберите управление ходами. 0 — Отмена (в главное меню).");
-        const auto choice = ui_.choose({{1, "Автобой"}, {2, "По одному ходу"},
-                                        {0, "В главное меню", true, true}});
-        if (!choice || *choice == 0) return false;
-        mode = *choice == 2 ? BattleMode::Manual : BattleMode::Automatic;
-        return true;
+        ui_.message("Выберите управление ходами.");
+        const auto choice = ui_.choose({{1, "Автобой"},
+                                        {2, "По одному ходу"},
+                                        {uiAction::Back, "Назад", true, true},
+                                        {0, "В главное меню"}});
+        if (choice && (*choice == 1 || *choice == 2))
+            mode = *choice == 2 ? BattleMode::Manual : BattleMode::Automatic;
+        return choice;
     };
     auto selectInput = [&] {
-        ui_.message("Как игроки набирают армии? 0 — Отмена (в главное меню).");
-        const auto choice = ui_.choose({{1, "Общий экран"}, {2, "Раздельный ввод"},
-                                        {0, "В главное меню", true, true}});
-        if (!choice || *choice == 0) return false;
-        privateInput = *choice == 2;
-        return true;
+        ui_.message("Как игроки набирают армии?");
+        const auto choice = ui_.choose({{1, "Общий экран"},
+                                        {2, "Раздельный ввод"},
+                                        {uiAction::Back, "Назад", true, true},
+                                        {0, "В главное меню"}});
+        if (choice && (*choice == 1 || *choice == 2))
+            privateInput = *choice == 2;
+        return choice;
+    };
+    auto generateDraft = [&] {
+        const auto factory = makeArmyFactory(generatedAlgorithm, catalog_);
+        Army generated = factory->createArmy(data.costLimit, armyRng);
+        builders[recruitTeam] = std::make_unique<ArmyBuilder>(
+            ArmyBuilder::restore(catalog_, data.costLimit, SaveService::snapshot(generated)));
+        ui_.message(factory->title() + ": " + EventFormatter::teamName(recruitTeam));
+        saveRecruitment();
+    };
+    auto enterReady = [&] {
+        clearSession(session);
+        session.armyA = std::make_unique<Army>(builders[0]->build());
+        session.armyB = std::make_unique<Army>(builders[1]->build());
+        session.engine = std::make_unique<BattleEngine>(*session.armyA, *session.armyB, data.seed);
+        data.armyA = builders[0]->units();
+        data.armyB = builders[1]->units();
+        checkpoint(SavePhase::Battle, 0);
+        state = State::Ready;
+    };
+    auto startNewSetup = [&] {
+        clearSession(session);
+        builders = {};
+        draftInitialized = false;
+        setupStep = 0;
+        setupBudget = 120;
+        setupSeed = 42;
     };
 
     while (state != State::Exit) {
@@ -290,174 +358,299 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             ui_.message("Shieldwall — новая партия или загрузка сохранения.");
             showPendingMessages();
             const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}});
-            if (!choice || *choice == 0) return;
+            if (!choice || *choice == 0)
+                return;
             loadReturn = State::Welcome;
+            if (*choice == 1)
+                startNewSetup();
             state = *choice == 2 ? State::Load : State::Setup;
             break;
         }
         case State::Setup: {
             ui_.setStage(ViewStage::Setup);
-            const auto budget = ui_.readNumberCancelable("Лимит цены каждой армии: ", minBudget,
-                std::numeric_limits<int>::max(), NumberCancel::MainMenu);
-            if (!budget) { state = State::Welcome; break; }
-            const auto seed = ui_.readNumberCancelable("Seed (например, 42): ", 0,
-                std::numeric_limits<std::uint32_t>::max(), NumberCancel::MainMenu);
-            if (!seed || !selectMode() || !selectInput()) { state = State::Welcome; break; }
+            bool cancelled = false;
+            while (setupStep < 4 && !cancelled) {
+                try {
+                    if (setupStep < 2) {
+                        const auto value =
+                            setupStep == 0 ? ui_.readSetupNumber("Лимит цены каждой армии: ", minBudget,
+                                                                 std::numeric_limits<int>::max(),
+                                                                 NumberCancel::MainMenu, setupBudget)
+                                           : ui_.readSetupNumber("Seed (например, 42): ", 0,
+                                                                 std::numeric_limits<std::uint32_t>::max(),
+                                                                 NumberCancel::Previous, setupSeed);
+                        if (!value) {
+                            cancelled = true;
+                            break;
+                        }
+                        if (setupStep == 0)
+                            setupBudget = *value;
+                        else
+                            setupSeed = *value;
+                        ++setupStep;
+                    } else {
+                        const auto choice = setupStep == 2 ? selectMode() : selectInput();
+                        if (!choice || *choice == 0) {
+                            cancelled = true;
+                            break;
+                        }
+                        if (*choice == uiAction::Back)
+                            --setupStep;
+                        else
+                            ++setupStep;
+                    }
+                } catch (const ViewBack&) {
+                    setupStep = std::max(0, setupStep - 1);
+                }
+            }
+            if (cancelled) {
+                state = State::Welcome;
+                break;
+            }
+            const bool changedSeed = !draftInitialized || data.seed != setupSeed;
+            const bool changedBudget = !draftInitialized || data.costLimit != static_cast<int>(setupBudget);
             clearSession(session);
-            data = {};
-            data.costLimit = static_cast<int>(*budget);
-            data.seed = *seed;
-            armyRng.seed(data.seed);
-            logRng.seed(data.seed);
-            builders[0] = std::make_unique<ArmyBuilder>(catalog_, data.costLimit);
-            builders[1] = std::make_unique<ArmyBuilder>(catalog_, data.costLimit);
+            if (changedSeed) {
+                armyRng.seed(setupSeed);
+                logRng.seed(setupSeed);
+            }
+            if (changedBudget) {
+                for (auto& builder : builders) {
+                    const auto records = builder && builder->spent() <= static_cast<int>(setupBudget)
+                                             ? builder->units()
+                                             : std::vector<UnitRecord>{};
+                    builder = std::make_unique<ArmyBuilder>(
+                        ArmyBuilder::restore(catalog_, static_cast<int>(setupBudget), records));
+                }
+            }
+            data.costLimit = static_cast<int>(setupBudget);
+            data.seed = setupSeed;
+            draftInitialized = true;
             resultShown = false;
             resultSaved = false;
+            recruitTeam = 0;
+            recruitScreen = RecruitmentScreen::Methods;
+            needHandoff = true;
+            handoffReturn = -1;
             saveRecruitment();
             state = State::Recruitment;
             break;
         }
         case State::Recruitment: {
             ui_.setStage(ViewStage::Recruitment);
-            bool completed = true;
-            for (int team = 0; team < 2 && completed; ++team) {
-                if (privateInput && !ui_.handoff(team)) return;
-                ui_.showRecruitment(recruitmentFrame(builders, academy, team, privateInput));
-                ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
-                std::vector<MenuChoice> methods{{1, "Случайный набор"}, {2, "Ручная закупка"},
-                                                 {3, "Сжатый набор"}};
-                if (!builders[team]->units().empty()) methods.push_back({30, "Армия готова"});
-                methods.push_back({0, "В главное меню", true, true});
-                const auto method = ui_.choose(methods);
-                if (!method) return;
-                if (*method == 0) { completed = false; break; }
-                if (*method == 30) continue;
-                if (*method == 1 || *method == 3) {
-                    const auto algorithm = *method == 3 ? ArmyAlgorithm::Compact : ArmyAlgorithm::Random;
-                    const auto factory = makeArmyFactory(algorithm, catalog_);
-                    Army generated = factory->createArmy(data.costLimit, armyRng);
-                    ui_.message(factory->title() + ": " + EventFormatter::teamName(team));
-                    builders[team] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
-                        catalog_, data.costLimit, SaveService::snapshot(generated)));
-                    saveRecruitment();
-                    continue;
-                }
-
-                bool editing = true;
-                while (editing) {
-                    const auto frame = recruitmentFrame(builders, academy, team, privateInput);
-                    ui_.showRecruitment(frame);
-                    std::vector<MenuChoice> choices;
-                    for (const auto& offer : frame.offers) {
-                        choices.push_back({buyAction(offer.kind),
-                            std::string("Купить: ") + unitKindName(offer.kind), offer.enabled});
+            const int team = recruitTeam;
+            if (needHandoff && privateInput) {
+                try {
+                    if (!ui_.handoff(team))
+                        return;
+                } catch (const ViewBack&) {
+                    needHandoff = false;
+                    if (handoffReturn < 0) {
+                        setupStep = 3;
+                        state = State::Setup;
+                    } else if (handoffReturn == 2)
+                        enterReady();
+                    else {
+                        recruitTeam = handoffReturn;
+                        recruitScreen = RecruitmentScreen::Methods;
                     }
-                    const bool hasUnits = !builders[team]->units().empty();
-                    choices.push_back({20, "Убрать бойца", hasUnits});
-                    choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
-                    choices.push_back({30, "Армия готова", hasUnits});
-                    choices.push_back({40, "Сохранить"});
-                    choices.push_back({0, "В главное меню", true, true});
-                    const auto choice = ui_.choose(choices);
-                    if (!choice) return;
-                    if (*choice == 0) { completed = false; break; }
-                    if (*choice == 40) {
-                        data.armyA = builders[0]->units();
-                        data.armyB = builders[1]->units();
-                        saveByName(SavePhase::Recruitment, 0);
-                        continue;
-                    }
-                    if (*choice == 30) {
-                        if (!hasUnits) { ui_.message("Сначала купите хотя бы одного бойца."); continue; }
-                        editing = false;
-                        continue;
-                    }
-
-                    BuildResult outcome = BuildResult::UnknownKind;
-                    const auto purchase = std::find_if(frame.offers.begin(), frame.offers.end(),
-                        [&](const RecruitmentOffer& offer) { return buyAction(offer.kind) == *choice; });
-                    if (purchase != frame.offers.end()) {
-                        outcome = recruitFromAcademy(*builders[team], academy, purchase->kind, armyRng);
-                    } else if (*choice == 20 || *choice == 21) {
-                        if (!hasUnits) { ui_.message("Строй пока пуст."); continue; }
-                        const auto size = static_cast<std::uint32_t>(builders[team]->units().size());
-                        const auto from = ui_.readNumberCancelable("Позиция бойца (с 1): ", 1, size,
-                            NumberCancel::Dialog);
-                        if (!from) continue;
-                        if (*choice == 20) outcome = builders[team]->remove(*from - 1);
-                        else {
-                            const auto to = ui_.readNumberCancelable("Новая позиция (с 1): ", 1, size,
-                                NumberCancel::Dialog);
-                            if (!to) continue;
-                            outcome = builders[team]->move(*from - 1, *to - 1);
-                        }
-                    }
-                    ui_.message(buildError(outcome));
-                    if (outcome == BuildResult::Ok) saveRecruitment();
+                    break;
                 }
             }
-            if (!completed) { state = State::Welcome; break; }
-            clearSession(session);
-            session.armyA = std::make_unique<Army>(builders[0]->build());
-            session.armyB = std::make_unique<Army>(builders[1]->build());
-            session.engine = std::make_unique<BattleEngine>(*session.armyA, *session.armyB, data.seed);
-            // Эти копии не меняются после начала боя.
-            data.armyA = builders[0]->units();
-            data.armyB = builders[1]->units();
-            checkpoint(SavePhase::Battle, 0);
-            state = State::Ready;
+            needHandoff = false;
+            auto frame = recruitmentFrame(builders, academy, team, privateInput);
+            frame.screen = recruitScreen;
+            ui_.showRecruitment(frame);
+            const bool hasUnits = !builders[team]->units().empty();
+            std::vector<MenuChoice> choices;
+            if (recruitScreen == RecruitmentScreen::Methods) {
+                ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
+                choices = {{1, "Случайный набор"}, {2, "Ручная закупка"}, {3, "Сжатый набор"}};
+                if (hasUnits)
+                    choices.push_back({30, "Армия готова"});
+            } else if (recruitScreen == RecruitmentScreen::Generated) {
+                choices = {{1, "Создать снова"},
+                           {2, "Ручная закупка"},
+                           {3, "Другой способ набора"},
+                           {30, "Армия готова", hasUnits},
+                           {40, "Сохранить"}};
+            } else {
+                for (const auto& offer : frame.offers)
+                    choices.push_back({buyAction(offer.kind),
+                                       std::string("Купить: ") + unitKindName(offer.kind), offer.enabled});
+                choices.push_back({20, "Убрать бойца", hasUnits});
+                choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
+                choices.push_back({30, "Армия готова", hasUnits});
+                choices.push_back({40, "Сохранить"});
+            }
+            choices.push_back({uiAction::Back, "Назад", true, true});
+            choices.push_back({0, "В главное меню"});
+            const auto choice = ui_.choose(choices);
+            if (!choice)
+                return;
+            if (*choice == 0) {
+                state = State::Welcome;
+                break;
+            }
+            if (*choice == uiAction::Back) {
+                if (recruitScreen != RecruitmentScreen::Methods)
+                    recruitScreen = RecruitmentScreen::Methods;
+                else if (team == 1) {
+                    recruitTeam = 0;
+                    needHandoff = true;
+                    handoffReturn = 1;
+                } else {
+                    setupStep = 3;
+                    state = State::Setup;
+                }
+                break;
+            }
+            if (*choice == 40) {
+                saveByName(SavePhase::Recruitment, 0);
+                break;
+            }
+            if (*choice == 30) {
+                if (!hasUnits) {
+                    ui_.message("Сначала наймите хотя бы одного бойца.");
+                    break;
+                }
+                if (team == 0) {
+                    recruitTeam = 1;
+                    recruitScreen = RecruitmentScreen::Methods;
+                    needHandoff = true;
+                    handoffReturn = 0;
+                    break;
+                }
+                enterReady();
+                break;
+            }
+            if (recruitScreen == RecruitmentScreen::Methods) {
+                if (*choice == 2)
+                    recruitScreen = RecruitmentScreen::Academy;
+                else if (*choice == 1 || *choice == 3) {
+                    generatedAlgorithm = *choice == 3 ? ArmyAlgorithm::Compact : ArmyAlgorithm::Random;
+                    generateDraft();
+                    recruitScreen = RecruitmentScreen::Generated;
+                }
+                break;
+            }
+            if (recruitScreen == RecruitmentScreen::Generated) {
+                if (*choice == 1)
+                    generateDraft();
+                else if (*choice == 2)
+                    recruitScreen = RecruitmentScreen::Academy;
+                else if (*choice == 3)
+                    recruitScreen = RecruitmentScreen::Methods;
+                break;
+            }
+            BuildResult outcome = BuildResult::UnknownKind;
+            if (*choice == uiAction::ArmyEdit) {
+                if (const auto edit = ui_.takeArmyEdit())
+                    outcome = edit->kind == ArmyEdit::Kind::Remove
+                                  ? builders[team]->remove(edit->from)
+                                  : builders[team]->move(edit->from, edit->to);
+            } else {
+                const auto purchase =
+                    std::find_if(frame.offers.begin(), frame.offers.end(),
+                                 [&](const RecruitmentOffer& o) { return buyAction(o.kind) == *choice; });
+                if (purchase != frame.offers.end())
+                    outcome = recruitFromAcademy(*builders[team], academy, purchase->kind, armyRng);
+                else if (*choice == 20 || *choice == 21) {
+                    const auto size = static_cast<std::uint32_t>(builders[team]->units().size());
+                    if (size == 0)
+                        break;
+                    const auto from =
+                        ui_.readNumberCancelable("Позиция бойца (с 1): ", 1, size, NumberCancel::Dialog);
+                    if (!from)
+                        break;
+                    if (*choice == 20)
+                        outcome = builders[team]->remove(*from - 1);
+                    else {
+                        const auto to =
+                            ui_.readNumberCancelable("Новая позиция (с 1): ", 1, size, NumberCancel::Dialog);
+                        if (!to)
+                            break;
+                        outcome = builders[team]->move(*from - 1, *to - 1);
+                    }
+                }
+            }
+            ui_.message(buildError(outcome));
+            if (outcome == BuildResult::Ok)
+                saveRecruitment();
             break;
         }
         case State::Ready: {
             ui_.setStage(ViewStage::Recruitment);
-            ui_.message("Лимит: " + std::to_string(data.costLimit) + ", seed: " +
-                        std::to_string(data.seed) + ". Обе армии готовы.");
+            ui_.message("Лимит: " + std::to_string(data.costLimit) + ", seed: " + std::to_string(data.seed) +
+                        ". Обе армии готовы.");
             ui_.showArmies(*session.armyA, *session.armyB);
             showPendingMessages();
-            const auto choice = ui_.choose({{1, "К бою"}, {2, "Изменить армии"},
-                                            {3, "Настройки"}, {4, "Загрузить"},
-                                            {40, "Сохранить"}, {0, "В главное меню", true, true}});
-            if (!choice) return;
-            if (*choice == 0) { state = State::Welcome; break; }
-            if (*choice == 40) { saveByName(SavePhase::Battle, 0); break; }
-            if (*choice == 2) {
+            const auto choice = ui_.choose({{1, "К бою"},
+                                            {2, "Изменить армии"},
+                                            {3, "Настройки"},
+                                            {4, "Загрузить"},
+                                            {40, "Сохранить"},
+                                            {uiAction::Back, "Назад", true, true},
+                                            {0, "В главное меню"}});
+            if (!choice)
+                return;
+            if (*choice == 0) {
+                state = State::Welcome;
+                break;
+            }
+            if (*choice == 40) {
+                saveByName(SavePhase::Battle, 0);
+                break;
+            }
+            if (*choice == 2 || *choice == uiAction::Back) {
                 clearSession(session);
                 saveRecruitment();
+                recruitTeam = *choice == uiAction::Back ? 1 : 0;
+                recruitScreen = RecruitmentScreen::Methods;
+                needHandoff = true;
+                handoffReturn = 2;
                 state = State::Recruitment;
-            } else if (*choice == 3) state = State::Setup;
-            else if (*choice == 4) { loadReturn = State::Ready; state = State::Load; }
-            else state = State::Battle;
+            } else if (*choice == 3) {
+                setupStep = 0;
+                state = State::Setup;
+            } else if (*choice == 4) {
+                loadReturn = State::Ready;
+                state = State::Load;
+            } else
+                state = State::Battle;
             break;
         }
         case State::Load: {
             try {
                 const auto path = selectSave();
-                if (!path) { state = loadReturn; break; }
+                if (!path) {
+                    state = loadReturn;
+                    break;
+                }
                 if (loadReturn == State::Ready || loadReturn == State::Result) {
-                    const auto confirm = ui_.choose({{1, "Заменить текущую партию"},
-                                                     {0, "Отмена", true, true}});
-                    if (!confirm || *confirm == 0) { state = loadReturn; break; }
+                    const auto confirm =
+                        ui_.choose({{1, "Заменить текущую партию"}, {0, "Отмена", true, true}});
+                    if (!confirm || *confirm == 0) {
+                        state = loadReturn;
+                        break;
+                    }
                 }
                 SaveData loaded = SaveService::loadFromFile(*path);
                 if (loaded.phase == SavePhase::Recruitment) {
                     Builders restored;
-                    restored[0] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
-                        catalog_, loaded.costLimit, loaded.armyA));
-                    restored[1] = std::make_unique<ArmyBuilder>(ArmyBuilder::restore(
-                        catalog_, loaded.costLimit, loaded.armyB));
+                    restored[0] = std::make_unique<ArmyBuilder>(
+                        ArmyBuilder::restore(catalog_, loaded.costLimit, loaded.armyA));
+                    restored[1] = std::make_unique<ArmyBuilder>(
+                        ArmyBuilder::restore(catalog_, loaded.costLimit, loaded.armyB));
                     ui_.clearDisplay();
                     ui_.setStage(ViewStage::Setup);
-                    const auto oldMode = mode;
-                    const auto oldInput = privateInput;
-                    if (!selectMode() || !selectInput()) {
-                        mode = oldMode;
-                        privateInput = oldInput;
-                        state = State::Welcome;
-                        break;
-                    }
                     clearSession(session);
                     builders = std::move(restored);
-                    state = State::Recruitment;
+                    draftInitialized = true;
+                    setupBudget = static_cast<std::uint32_t>(loaded.costLimit);
+                    setupSeed = loaded.seed;
+                    setupStep = 2;
+                    state = State::Setup;
                 } else {
                     if (loaded.armyA.empty() || loaded.armyB.empty()) {
                         throw DataError("сохранение боя должно содержать две стартовые армии");
@@ -467,10 +660,18 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                         throw DataError("сохранение результата содержит незавершённый бой");
                     }
                     ui_.clearDisplay();
+                    resultShown = false;
                     ui_.setStage(ViewStage::Setup);
-                    if (!restored.engine->finished() && !selectMode()) {
-                        state = State::Welcome;
-                        break;
+                    if (!restored.engine->finished()) {
+                        const auto choice = selectMode();
+                        if (choice && *choice == uiAction::Back) {
+                            state = State::Load;
+                            break;
+                        }
+                        if (!choice || *choice == 0) {
+                            state = State::Welcome;
+                            break;
+                        }
                     }
                     clearSession(session);
                     session = std::move(restored);
@@ -493,8 +694,9 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         }
         case State::Battle: {
             ui_.setStage(ViewStage::Battle);
-            const auto outcome = BattleRunner(ui_).run(*session.engine, *session.armyA, *session.armyB,
-                logRng, mode, session.turn, [&](int turn) { checkpoint(SavePhase::Battle, turn); },
+            const auto outcome = BattleRunner(ui_).run(
+                *session.engine, *session.armyA, *session.armyB, logRng, mode, session.turn,
+                [&](int turn) { checkpoint(SavePhase::Battle, turn); },
                 [&](int turn) { saveByName(SavePhase::Battle, turn); });
             session.turn = outcome.turn;
             mode = outcome.mode;
@@ -515,16 +717,28 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 resultShown = true;
             }
             showPendingMessages();
-            const auto choice = ui_.choose({{1, "Новая партия"}, {2, "Загрузить"},
-                                            {40, "Сохранить"}, {0, "В главное меню", true, true}});
-            if (!choice) return;
-            if (*choice == 0) { state = State::Welcome; break; }
-            if (*choice == 40) { saveByName(SavePhase::Result, session.turn); break; }
+            const auto choice = ui_.choose({{1, "Новая партия"},
+                                            {2, "Загрузить"},
+                                            {40, "Сохранить"},
+                                            {0, "В главное меню", true, true}});
+            if (!choice)
+                return;
+            if (*choice == 0) {
+                state = State::Welcome;
+                break;
+            }
+            if (*choice == 40) {
+                saveByName(SavePhase::Result, session.turn);
+                break;
+            }
             loadReturn = State::Result;
+            if (*choice == 1)
+                startNewSetup();
             state = *choice == 1 ? State::Setup : State::Load;
             break;
         }
-        case State::Exit: return;
+        case State::Exit:
+            return;
         }
     }
 }

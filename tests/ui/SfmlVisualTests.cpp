@@ -47,10 +47,11 @@ int main(int argc, char** argv) {
         render("02-empty-saves-notice", s);
         s = {};
         s.stage = ViewStage::Setup;
-        s.choices = {{1, "Автобой"}, {2, "По одному ходу"}, {0, "В главное меню"}};
+        s.choices = {{1, "Автобой"}, {2, "По одному ходу"}, {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("03-settings", s);
         s.enteringNumber = true;
         s.prompt = "Seed (например, 42): ";
+        s.numberCancel = NumberCancel::Previous;
         s.input = "4294967295";
         s.selectAll = true;
         render("04-number-dialog", s);
@@ -83,11 +84,46 @@ int main(int argc, char** argv) {
                      {30, "Армия готова"},
                      {0, "В главное меню"}};
         render("05-army-methods", s);
+        s.recruitment.screen = RecruitmentScreen::Academy;
         s.choices = {{1, "Купить: Лёгкий"},     {2, "Купить: Тяжёлый", false},  {3, "Купить: Лучник", false},
                      {4, "Купить: Маг", false}, {5, "Купить: Целитель", false}, {20, "Убрать бойца"},
                      {21, "Переставить"},       {30, "Армия готова"},           {40, "Сохранить"},
-                     {0, "В главное меню"}};
+                     {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("06-academy", s);
+        if (std::none_of(scene.buttons().begin(), scene.buttons().end(),
+                         [](const Button& b) { return b.action == static_cast<int>(uiAction::Back); }))
+            throw std::runtime_error("Academy back button missing");
+        if (scene.rosterCards().size() != 5)
+            throw std::runtime_error("Academy card targets missing");
+        for (const auto action : {20, 21})
+            for (const auto& button : scene.buttons())
+                if (button.action == action)
+                    throw std::runtime_error("Legacy army dialog button is visible");
+        State drag = s;
+        drag.drag = DragState{0, {119, 624}, {421, 624}, true};
+        render("19-dragging", drag);
+        State moved = s;
+        auto unit = moved.battle.armies[0].units[0];
+        moved.battle.armies[0].units.erase(moved.battle.armies[0].units.begin());
+        moved.battle.armies[0].units.insert(moved.battle.armies[0].units.begin() + 2, unit);
+        moved.rosterTransition =
+            RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, 0, 2}, unit, .5f, sf::Vector2f(352, 584)};
+        render("20-reordering", moved);
+        State generated = s;
+        generated.recruitment.screen = RecruitmentScreen::Generated;
+        generated.choices = {{1, "Создать снова"}, {2, "Ручная закупка"}, {3, "Другой способ набора"},
+                             {30, "Армия готова"}, {40, "Сохранить"},     {uiAction::Back, "Назад"},
+                             {0, "В главное меню"}};
+        render("21-generated-preview", generated);
+        State budget = s;
+        budget.stage = ViewStage::Setup;
+        budget.enteringNumber = true;
+        budget.numberCancel = NumberCancel::MainMenu;
+        budget.prompt = "Лимит цены каждой армии: ";
+        budget.input = "120";
+        budget.choices.clear();
+        render("22-budget-page", budget);
+
         s.recruiting = false;
         s.choices = {{1, "К бою"},     {2, "Изменить армии"}, {3, "Настройки"},
                      {4, "Загрузить"}, {40, "Сохранить"},     {0, "В главное меню"}};
@@ -121,6 +157,12 @@ int main(int argc, char** argv) {
             effect.playing = true;
             effect.waiting = false;
             render("09-effect-" + std::to_string(i), effect);
+            for (const auto action : {Auto, Save, 0}) {
+                const auto button = std::find_if(scene.buttons().begin(), scene.buttons().end(),
+                                                 [&](const Button& b) { return b.action == action; });
+                if (button == scene.buttons().end() || !button->enabled)
+                    throw std::runtime_error("Playback controls are disabled");
+            }
         }
         s.stage = ViewStage::Result;
         s.waiting = false;
@@ -151,6 +193,7 @@ int main(int argc, char** argv) {
         render("16-battle-last-page", paged);
         paged.stage = ViewStage::Recruitment;
         paged.recruiting = true;
+        paged.recruitment.screen = RecruitmentScreen::Academy;
         paged.recruitment.activeTeam = 0;
         paged.recruitment.limit = 2147483647;
         paged.recruitment.spent = 2147483637;

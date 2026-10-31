@@ -8,6 +8,12 @@
 class UserInterface {
 public:
     virtual ~UserInterface() = default;
+    virtual void setPlaybackHandler(PlaybackHandler) {}
+    virtual std::optional<ArmyEdit> takeArmyEdit() { return std::nullopt; }
+    virtual std::optional<std::uint32_t> readSetupNumber(const std::string& prompt,
+        std::uint32_t min, std::uint32_t max, NumberCancel cancel, std::uint32_t) {
+        return readNumberCancelable(prompt, min, max, cancel);
+    }
     virtual void setStage(ViewStage stage) = 0;
     virtual void clearDisplay() {}
     virtual void setBattleProgress(int turn, BattleMode mode) = 0;

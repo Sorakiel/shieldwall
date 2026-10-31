@@ -1,9 +1,17 @@
 #include "ConsoleUI.h"
 #include "ConsoleView.h"
 #include "EventFormatter.h"
+#include <utility>
 
 ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
     : ownedView_(std::make_unique<ConsoleView>(in, out)), view_(ownedView_.get()) {
+}
+
+void ConsoleUI::setPlaybackHandler(PlaybackHandler handler) { view_->setPlaybackHandler(std::move(handler)); }
+std::optional<ArmyEdit> ConsoleUI::takeArmyEdit() { return view_->takeArmyEdit(); }
+std::optional<std::uint32_t> ConsoleUI::readSetupNumber(const std::string& prompt,
+    std::uint32_t min, std::uint32_t max, NumberCancel cancel, std::uint32_t initial) {
+    return view_->readSetupNumber(prompt, min, max, cancel, initial);
 }
 
 void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }

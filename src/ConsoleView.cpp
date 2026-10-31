@@ -198,13 +198,15 @@ void ConsoleView::clearDisplay() {
 std::optional<std::uint32_t> ConsoleView::readNumberCancelable(const std::string& prompt,
     std::uint32_t min, std::uint32_t max, NumberCancel cancel) {
     separateBlock();
-    message(cancel == NumberCancel::Dialog ? "0 — Отмена" : "/menu — В главное меню");
+    message(cancel == NumberCancel::Dialog ? "0 — Отмена" : cancel == NumberCancel::Previous ?
+        "/back — Назад; /menu — В главное меню" : "/menu — В главное меню");
     std::string line;
     while (true) {
         out_ << prompt << std::flush;
         lastLineBlank_ = false;
         if (!std::getline(in_, line)) return std::nullopt;
-        if (cancel == NumberCancel::MainMenu && line == "/menu") return std::nullopt;
+        if (cancel != NumberCancel::Dialog && line == "/menu") return std::nullopt;
+        if (cancel == NumberCancel::Previous && line == "/back") throw ViewBack{};
         if (cancel == NumberCancel::Dialog && parseNumber(line, 0, 0)) return std::nullopt;
         if (const auto value = parseNumber(line, min, max)) return value;
         message("Введите целое число от " + std::to_string(min) + " до " + std::to_string(max) + ".");
@@ -324,9 +326,10 @@ TurnAction ConsoleView::waitForTurn(BattleMode mode) {
 bool ConsoleView::handoff(int team) {
     clearDisplay();
     message("Передайте управление игроку " + std::to_string(team + 1) +
-            ". Предыдущий игрок должен отвернуться. Нажмите Enter.");
+            ". Предыдущий игрок должен отвернуться. Нажмите Enter; /back — Назад.");
     std::string line;
     while (std::getline(in_, line)) {
+        if (line=="/back") throw ViewBack{};
         if (line.empty()) {
             clearDisplay();
             return true;

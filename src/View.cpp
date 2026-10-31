@@ -40,3 +40,11 @@ std::string specialActionDescription(UnitKind kind, int power, int range) {
     }
     return "";
 }
+
+std::string counted(std::size_t count, const char* one, const char* few, const char* many) {
+    const auto last = count % 10, pair = count % 100;
+    return std::to_string(count) + " " + (pair >= 11 && pair <= 14 ? many :
+        last == 1 ? one : last >= 2 && last <= 4 ? few : many);
+}
+std::string unitCount(std::size_t count) { return counted(count,"боец","бойца","бойцов"); }
+std::string moneyCount(std::size_t count) { return counted(count,"монета","монеты","монет"); }
