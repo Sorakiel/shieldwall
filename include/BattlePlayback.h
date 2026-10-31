@@ -4,6 +4,7 @@
 #include <cmath>
 #include "Event.h"
 #include "View.h"
+#include "UnitDecorator.h"
 
 namespace presentation {
 struct Slot {
@@ -66,6 +67,28 @@ struct Step {
         return false;
     }
 };
+
+// Reuse the decorators' actual bonuses rather than copying combat numbers into the view.
+inline void applyEquipment(UnitSnapshot& unit, const std::string& equipment) {
+    if (equipment.empty())
+        return;
+    const auto suffix = " [" + equipment + "]";
+    if (unit.name.find(suffix) != std::string::npos)
+        return;
+    if (unit.kind == UnitKind::Heavy) {
+        for (const auto kind : {BuffKind::Helmet, BuffKind::Shield, BuffKind::Spear, BuffKind::Horse}) {
+            if (equipment != buffName(kind))
+                continue;
+            auto decorated = decorate(
+                std::make_unique<HeavyUnit>(unit.name, unit.maxHp, unit.attack, unit.defense, unit.cost),
+                kind);
+            unit.attack = decorated->meleeAttack();
+            unit.defense = decorated->defense();
+            break;
+        }
+    }
+    unit.name += suffix;
+}
 
 class Playback {
     int turn_ = -1;
@@ -156,7 +179,7 @@ public:
                 unit->hp = 0;
         } else if (e.type == EventType::Buff) {
             if (auto unit = at(step.target))
-                unit->name += " [" + e.buff + "]";
+                applyEquipment(*unit, e.buff);
         } else if (e.type == EventType::Clone) {
             const auto source = at(step.target);
             if (source && step.actor.valid()) {

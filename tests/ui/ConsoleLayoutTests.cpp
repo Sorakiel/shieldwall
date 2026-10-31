@@ -105,7 +105,7 @@ void testRecruitment() {
     frame.armies[0].units[0].name = "Имя, которое длиннее всех остальных";
     frame.armies[0].units[0].cost = 123456;
     frame.offers[0].cost = 123456;
-    frame.offers[4].ranged = 123456;
+    frame.offers[4].ranged = 1234567890;
     other.showRecruitment(frame);
     const auto expanded = tables(wider.str());
     CHECK(expanded.size() == 2);

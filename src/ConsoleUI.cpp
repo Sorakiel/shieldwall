@@ -59,7 +59,9 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
         output.units.reserve(army.size());
         for (std::size_t i = 0; i < army.size(); ++i) {
             const Unit& unit = *army.at(i);
-            output.units.push_back({ unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost() });
+            const auto* archer = dynamic_cast<const Archer*>(&unit);
+            output.units.push_back({unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost(),
+                                    unit.meleeAttack(), unit.defense(), archer ? archer->rangedAttack() : 0});
         }
     }
     snapshot.finished = a.isDefeated() || b.isDefeated();

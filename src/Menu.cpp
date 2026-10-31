@@ -72,7 +72,9 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAca
         army.totalCost = builders[index]->spent();
         for (const auto& record : builders[index]->units()) {
             army.units.push_back(
-                {record.spec.kind, record.name, record.spec.maxHp, record.spec.maxHp, record.spec.cost});
+                {record.spec.kind, record.name, record.spec.maxHp, record.spec.maxHp, record.spec.cost,
+                 record.spec.melee, record.spec.defense,
+                 record.spec.kind == UnitKind::Archer ? record.spec.ranged : 0});
         }
     }
     for (const auto& entry : academy.available()) {
