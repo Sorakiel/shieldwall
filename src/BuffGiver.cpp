@@ -1,6 +1,21 @@
 #include "BuffGiver.h"
 #include <vector>
 
+namespace {
+
+const BuffKind AllBuffs[] = { BuffKind::Helmet, BuffKind::Shield, BuffKind::Spear, BuffKind::Horse };
+
+// Виды бонусов, которых у юнита ещё нет, в порядке перечисления BuffKind
+std::vector<BuffKind> missingBuffs(const Unit& unit) {
+    std::vector<BuffKind> missing;
+    for (BuffKind buff : AllBuffs) {
+        if (!hasBuff(unit, buff)) missing.push_back(buff);
+    }
+    return missing;
+}
+
+}  // namespace
+
 BuffGiver::Result BuffGiver::tryGrant(Army& army, std::size_t lightIndex, std::mt19937& rng) {
     Result result;
     if (usedThisTurn_ || lightIndex >= army.size()) return result;
@@ -14,7 +29,10 @@ BuffGiver::Result BuffGiver::tryGrant(Army& army, std::size_t lightIndex, std::m
     std::vector<std::size_t> neighbours;
     for (std::size_t i : heavies) {
         Unit* unit = army.at(i);
-        if (unit->isAlive() && unit->kind() == UnitKind::Heavy) neighbours.push_back(i);
+        // Тяжёлый, у которого уже есть все бонусы, получателем не считается
+        if (unit->isAlive() && unit->kind() == UnitKind::Heavy && !missingBuffs(*unit).empty()) {
+            neighbours.push_back(i);
+        }
     }
     if (neighbours.empty()) return result;
 
@@ -22,7 +40,9 @@ BuffGiver::Result BuffGiver::tryGrant(Army& army, std::size_t lightIndex, std::m
     if (static_cast<int>(rng() % 100) >= chance_) return result;
 
     const std::size_t target = neighbours[rng() % neighbours.size()];
-    const BuffKind buff = static_cast<BuffKind>(rng() % 4);
+    // Выбираем только из бонусов, которых у получателя ещё нет: один вид не вешается дважды
+    const std::vector<BuffKind> missing = missingBuffs(*army.at(target));
+    const BuffKind buff = missing[rng() % missing.size()];
 
     result.giver = giver->name();
     result.receiver = army.at(target)->name();

@@ -64,3 +64,12 @@ std::unique_ptr<Unit> decorate(std::unique_ptr<Unit> unit, BuffKind buff) {
     }
     throw std::invalid_argument("неизвестный вид бонуса");
 }
+
+bool hasBuff(const Unit& unit, BuffKind buff) {
+    const Unit* current = &unit;
+    while (const auto* decorator = dynamic_cast<const UnitDecorator*>(current)) {
+        if (decorator->buff() == buff) return true;
+        current = &decorator->inner();
+    }
+    return false;
+}

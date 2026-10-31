@@ -78,3 +78,7 @@ protected:
 
 // Фабричная функция: нужная обёртка по виду бонуса
 std::unique_ptr<Unit> decorate(std::unique_ptr<Unit> unit, BuffKind buff);
+
+// Есть ли на юните (в любой из вложенных обёрток) бонус этого вида.
+// Нужна, чтобы один и тот же бонус не вешался на юнита повторно.
+bool hasBuff(const Unit& unit, BuffKind buff);
