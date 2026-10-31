@@ -3,9 +3,12 @@
 #include <ostream>
 #include "View.h"
 
+enum class ConsoleColorMode { Automatic, Never, Always };
+
 class ConsoleView final : public View {
 public:
-    ConsoleView(std::istream& in, std::ostream& out) : in_(in), out_(out) {}
+    ConsoleView(std::istream& in, std::ostream& out,
+        ConsoleColorMode colors = ConsoleColorMode::Automatic) : in_(in), out_(out), colors_(colors) {}
     void clearDisplay() override;
     std::optional<std::uint32_t> readNumberCancelable(const std::string& prompt,
         std::uint32_t min, std::uint32_t max, NumberCancel cancel) override;
@@ -24,6 +27,9 @@ public:
 private:
     std::istream& in_;
     std::ostream& out_;
+    ConsoleColorMode colors_;
+    bool colorsEnabled() const;
+    bool beginTeamColor(int team);
     bool lastLineBlank_ = true;
     int logTurn_ = -1;
     void separateBlock();

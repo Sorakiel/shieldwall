@@ -163,14 +163,25 @@ std::optional<std::string> ConsoleView::readText(const std::string& prompt, std:
     }
 }
 
+bool ConsoleView::colorsEnabled() const {
+    if (colors_ == ConsoleColorMode::Always) return true;
+    if (colors_ == ConsoleColorMode::Never) return false;
+    return colorOutput(out_);
+}
+
+bool ConsoleView::beginTeamColor(int team) {
+    if (!colorsEnabled() || (team != 0 && team != 1)) return false;
+    out_ << (team == 0 ? "\033[94m" : "\033[91m");
+    return true;
+}
+
 void ConsoleView::battleMessage(int turn, int team, const std::string& text) {
     if (logTurn_ != turn) {
         separateBlock();
         message("Ход " + std::to_string(turn));
         logTurn_ = turn;
     }
-    const bool color = colorOutput(out_) && (team == 0 || team == 1);
-    if (color) out_ << (team == 0 ? "\033[94m" : "\033[91m");
+    const bool color = beginTeamColor(team);
     const auto label = team == 0 ? "[Синие] " : team == 1 ? "[Красные] " : "";
     // Color every physical line, including explicit newlines in event text.
     if (color) message(text);
@@ -274,11 +285,13 @@ void ConsoleView::showArmies(const BattleSnapshot& snapshot) {
     for (std::size_t i = 0; i < tables.size(); ++i) {
         const auto& army = snapshot.armies[i];
         separateBlock();
+        const bool color = beginTeamColor(static_cast<int>(i));
         message(army.name + " — бойцов: " + std::to_string(army.units.size()) +
                 ", стоимость: " + std::to_string(army.totalCost));
         separateBlock();
         if (tables[i].empty()) message("Строй пуст.");
         else printTable(*this, tables[i], widths);
+        if (color) out_ << "\033[0m";
     }
     separateBlock();
 }
