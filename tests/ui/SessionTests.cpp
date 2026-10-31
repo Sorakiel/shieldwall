@@ -320,7 +320,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
     {
         SaveFile file;
         // Cancel remove, and both the source and destination position of move.
-        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n8\n1\n4\n0\n0\n");
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n9\n1\n7\n0\n0\n");
         std::ostringstream output;
         ConsoleUI ui(input, output);
         Menu(ui, catalog, file.path).run();
@@ -334,8 +334,8 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
         SaveFile file;
         ScriptView view;
         view.numbers = {70, 42};
-        // Ready -> edit -> confirm each existing army without entering manual recruitment.
-        view.actions = {1,2,1,1,30,1,30,2,30,30,0,0};
+        // Ready -> red methods -> blue methods -> confirm retained armies.
+        view.actions = {1,2,1,1,30,1,30,uiAction::Back,uiAction::Back,30,30,0,0};
         ConsoleUI ui(view);
         Menu(ui, catalog, file.path).run();
         CHECK(view.actions.empty());
@@ -407,13 +407,13 @@ void testArmyFactorySelection(const UnitCatalog& catalog) {
         Army a = factory->createArmy(200, rng), b = factory->createArmy(200, rng);
         CHECK(recordsText(saved.armyA) == recordsText(SaveService::snapshot(a)));
         CHECK(recordsText(saved.armyB) == recordsText(SaveService::snapshot(b)));
-        CHECK(view.hasMessage(factory->title()));
+        CHECK(!view.hasMessage(factory->title()));
     }
 }
 
 void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     SaveFile file;
-    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n8\n3\n4\n0\n0\n");
+    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n9\n3\n7\n0\n0\n");
     std::ostringstream output;
     ConsoleUI ui(input, output);
     Menu(ui, catalog, file.path).run();
@@ -422,12 +422,12 @@ void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     CHECK(contains(output.str(), "Купить: Маг") && contains(output.str(), "Купить: Целитель"));
     CHECK(contains(output.str(), "Клонирование 60%") && contains(output.str(), "Лечение 8 HP"));
     CHECK(contains(output.str(), "Сжатый набор"));
-    CHECK(contains(output.str(), "9 — Сохранить"));
+    CHECK(!contains(output.str(), "Сохранить") && contains(output.str(), "Очистить армию"));
     // Catalog order and a smaller set of unit types must not change purchase action mapping.
     std::istringstream source("version;1\nhealer;18;2;8;3;0;22\nmage;14;2;60;3;0;25\n");
     const auto reordered = UnitCatalog::loadFromStream(source, "reordered");
     SaveFile other;
-    std::istringstream commands("1\n70\n9\n2\n1\n2\n1\n2\n5\n1\n4\n0\n0\n");
+    std::istringstream commands("1\n70\n9\n2\n1\n2\n1\n2\n6\n1\n7\n0\n0\n");
     std::ostringstream text;
     ConsoleUI reorderedUi(commands, text);
     Menu(reorderedUi, reordered, other.path).run();

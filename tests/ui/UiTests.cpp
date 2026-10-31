@@ -95,11 +95,11 @@ namespace {
 
     void testMenu() {
         const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
-        const std::string script = "1\n9\n40\n42\n1\n1\n1\n99\n4\n1\n4\n1\n0\n0\n";
+        const std::string script = "1\n9\n40\n42\n1\n1\n1\n99\n7\n1\n7\n1\n0\n0\n";
         const std::string first = menuOutput(script, catalog);
         CHECK(first == menuOutput(script, catalog));
         CHECK(contains(first, "Введите целое число от 10"));
-        CHECK(contains(first, "Введите целое число от 0 до 6"));
+        CHECK(contains(first, "Введите целое число от 0 до 8"));
         CHECK(contains(first, "Уборка завершена"));
         CHECK(contains(first, "Итог: победили"));
         CHECK(contains(first, "Новая партия"));
@@ -108,9 +108,9 @@ namespace {
         for (const std::string scriptBeforeBattle : {"", "1\n10\n", "1\n10\n42\n1\n1\n", "1\n10\n42\n1\n1\n1\n1\n0\n"}) {
             CHECK(!contains(menuOutput(scriptBeforeBattle, catalog), "Уборка завершена"));
         }
-        const std::string regenerated = menuOutput("1\n40\n0\n1\n1\n1\n1\n4\n1\n1\n4\n1\n0\n0\n", catalog);
+        const std::string regenerated = menuOutput("1\n40\n0\n1\n1\n1\n1\n7\n1\n1\n7\n1\n0\n0\n", catalog);
         CHECK(contains(regenerated, "Итог: победили"));
-        const std::string reset = menuOutput("1\n40\n42\n1\n1\n1\n4\n1\n4\n3\n10\n0\n1\n1\n1\n4\n1\n4\n1\n1\n10\n0\n1\n1\n1\n4\n1\n4\n1\n0\n0\n",catalog);
+        const std::string reset = menuOutput("1\n40\n42\n1\n1\n1\n7\n1\n7\n1\n1\n10\n0\n1\n1\n1\n7\n1\n7\n1\n0\n0\n",catalog);
         const auto result = reset.find("Итог: победили");
         CHECK(result != std::string::npos);
         CHECK(reset.find("Итог: победили", result + 1) != std::string::npos);

@@ -81,6 +81,11 @@ public:
         if (beforeChoice) beforeChoice();
         for (const auto& choice : choices) {
             if (choice.label == "Выход") CHECK(stage == ViewStage::MainMenu);
+            if (stage == ViewStage::Setup || stage == ViewStage::Recruitment) {
+                CHECK(choice.label != "Сохранить" && choice.label != "Загрузить" &&
+                      choice.label != "Настройки" && choice.label != "Изменить армии");
+            }
+            if (stage == ViewStage::Result) CHECK(choice.label != "Сохранить");
         }
         menus.push_back(choices);
         if (!choices.empty() && choices.front().label == "Автобой") {
@@ -196,10 +201,11 @@ void testRunnerWithoutSaveCallback(const UnitCatalog& catalog) {
     CHECK(session.armyA->front()->hp() == a.front().spec.maxHp);
 }
 
-void testReadySaveDefaultRetryAndCancel(const UnitCatalog& catalog) {
+void testBattleSaveDefaultRetryAndCancel(const UnitCatalog& catalog) {
     {
         SaveDirectory dir; ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {40, 0});
+        view.actions.insert(view.actions.end(), {1, 0});
+        view.turns = {TurnAction::Save, TurnAction::Exit};
         view.texts = {std::string("../x"), std::string("AUTOSAVE"), std::string("")};
         observeAutosave(view, dir);
         run(view, catalog, dir);
@@ -212,7 +218,8 @@ void testReadySaveDefaultRetryAndCancel(const UnitCatalog& catalog) {
     }
     {
         SaveDirectory dir; ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {40, 0});
+        view.actions.insert(view.actions.end(), {1, 0});
+        view.turns = {TurnAction::Save, TurnAction::Exit};
         view.texts = {std::nullopt};
         observeAutosave(view, dir);
         run(view, catalog, dir);
@@ -229,7 +236,8 @@ void testOverwrite(const UnitCatalog& catalog) {
         SaveService::saveToFile(existing, dir.named("old").string());
         const auto original = contents(dir.named("old"));
         ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {40, confirm, 0});
+        view.actions.insert(view.actions.end(), {1, confirm, 0});
+        view.turns = {TurnAction::Save, TurnAction::Exit};
         view.texts = {std::string("old")};
         observeAutosave(view, dir);
         run(view, catalog, dir);
@@ -239,31 +247,25 @@ void testOverwrite(const UnitCatalog& catalog) {
     }
 }
 
-void testRecruitmentAndResultSave(const UnitCatalog& catalog) {
+void testRecruitmentAndResultAutosave(const UnitCatalog& catalog) {
     {
         SaveDirectory dir; ScriptView view;
         view.numbers = {70, 42};
-        view.actions = {1, 2, 1, 2, 1, 40, 0, 0};
-        view.texts = {std::string("draft")};
-        observeAutosave(view, dir);
+        view.actions = {1, 2, 1, 2, 1, 0, 0};
         run(view, catalog, dir);
-        const auto saved = SaveService::loadFromFile(dir.named("draft").string());
+        const auto saved = SaveService::loadFromFile(dir.autosave());
         CHECK(saved.phase == SavePhase::Recruitment && saved.turn == 0);
         CHECK(saved.armyA.size() == 1 && saved.armyB.empty());
+        CHECK(!view.hasChoice("Сохранить"));
     }
     {
         SaveDirectory dir; ScriptView view; ready(view, 1);
-        view.actions.insert(view.actions.end(), {1, 40, 0});
-        view.texts = {std::string("result")};
-        observeAutosave(view, dir);
+        view.actions.insert(view.actions.end(), {1, 0, 0});
         run(view, catalog, dir);
-        const auto saved = SaveService::loadFromFile(dir.named("result").string());
-        const auto autosave = SaveService::loadFromFile(dir.autosave());
+        const auto saved = SaveService::loadFromFile(dir.autosave());
         CHECK(saved.phase == SavePhase::Result && saved.turn > 0);
-        CHECK(saved.turn == autosave.turn);
         CHECK(BattleReplay::replay(saved).engine->finished());
-        CHECK(saved.armyA.size() == autosave.armyA.size());
-        CHECK(saved.armyA.front().spec.maxHp == autosave.armyA.front().spec.maxHp);
+        CHECK(!view.hasChoice("Сохранить") && !view.hasChoice("Настройки") && !view.hasChoice("Изменить армии"));
     }
 }
 
@@ -317,42 +319,43 @@ void testReplacingAndCancellingParty(const UnitCatalog& catalog) {
         SaveDirectory dir;
         auto other = battle(catalog, 2); other.seed = 15;
         SaveService::saveToFile(other, dir.named("other").string());
-        ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {4, 2, confirm});
+        ScriptView view; ready(view, 1);
+        view.actions.insert(view.actions.end(), {1, 2, 2, confirm});
         if (confirm) view.actions.insert(view.actions.end(), {2, 0});
-        else view.actions.insert(view.actions.end(), {0});
-        view.turns = {TurnAction::Exit};
+        else view.actions.insert(view.actions.end(), {0, 0});
+        view.beforeChoice = [&] {
+            if (view.stage == ViewStage::Result) view.turns = {TurnAction::Exit};
+        };
         run(view, catalog, dir);
+        CHECK(view.actions.empty());
         CHECK(view.hasChoice("Заменить текущую партию"));
         CHECK(view.hasMessage("Сыграно ходов: 2") == (confirm == 1));
         CHECK(SaveService::loadFromFile(dir.autosave()).seed == 42);
     }
     {
-        SaveDirectory dir; ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {4, 0, 40, 0});
-        view.texts = {std::string("still-ready")};
-        observeAutosave(view, dir);
-        run(view, catalog, dir);
-        CHECK(SaveService::loadFromFile(dir.named("still-ready").string()).turn == 0);
-    }
-    {
         SaveDirectory dir; ScriptView view; ready(view, 1);
-        view.actions.insert(view.actions.end(), {1, 2, 0, 40, 0});
-        view.texts = {std::string("still-result")};
-        observeAutosave(view, dir);
+        view.actions.insert(view.actions.end(), {1, 2, 0, 0, 0});
+        int results = 0;
+        view.beforeChoice = [&] {
+            if (view.stage == ViewStage::Result) {
+                CHECK(view.displayedArmy && view.displayedResult);
+                ++results;
+            }
+        };
         run(view, catalog, dir);
-        CHECK(SaveService::loadFromFile(dir.named("still-result").string()).phase == SavePhase::Result);
+        CHECK(view.actions.empty() && results == 3);
+        CHECK(SaveService::loadFromFile(dir.autosave()).phase == SavePhase::Result);
     }
     {
         SaveDirectory dir;
         auto invalid = battle(catalog); invalid.phase = SavePhase::Result;
         SaveService::saveToFile(invalid, dir.named("invalid").string());
-        ScriptView view; ready(view);
-        view.actions.insert(view.actions.end(), {4, 2, 1, 40, 0});
-        view.texts = {std::string("after-error")};
+        ScriptView view; ready(view, 1);
+        view.actions.insert(view.actions.end(), {1, 2, 2, 1, 0, 0});
         run(view, catalog, dir);
+        CHECK(view.actions.empty());
         CHECK(view.hasMessage("незавершённый бой"));
-        CHECK(SaveService::loadFromFile(dir.named("after-error").string()).phase == SavePhase::Battle);
+        CHECK(SaveService::loadFromFile(dir.autosave()).phase == SavePhase::Result);
     }
 }
 
@@ -592,9 +595,9 @@ int main() {
         const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
         testNamedSaveDuringBattle(catalog);
         testRunnerWithoutSaveCallback(catalog);
-        testReadySaveDefaultRetryAndCancel(catalog);
+        testBattleSaveDefaultRetryAndCancel(catalog);
         testOverwrite(catalog);
-        testRecruitmentAndResultSave(catalog);
+        testRecruitmentAndResultAutosave(catalog);
         testLoadSecondAndDamaged(catalog);
         testPaging(catalog);
         testReplacingAndCancellingParty(catalog);
