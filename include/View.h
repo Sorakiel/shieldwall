@@ -35,12 +35,14 @@ struct UnitSnapshot {
     int attack = 0;
     int defense = 0;
     int rangedAttack = 0;
+    std::size_t cloneNumber = 0;
 };
 
 struct ArmySnapshot {
     std::string name;
     int totalCost = 0;
     std::vector<UnitSnapshot> units;
+    std::size_t clonesCreated = 0;
 };
 
 struct BattleSnapshot {
@@ -132,3 +134,6 @@ std::string counted(std::size_t count, const char* one, const char* few, const c
 std::string unitCount(std::size_t count);
 std::string moneyCount(std::size_t count);
 std::string specialActionDescription(UnitKind kind, int power, int range);
+
+std::string cloneLabel(std::size_t number);
+std::string unitDisplayName(const UnitSnapshot& unit);

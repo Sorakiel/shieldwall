@@ -1,6 +1,8 @@
 #include "ConsoleUI.h"
 #include "ConsoleView.h"
 #include "EventFormatter.h"
+#include "CloneIdentity.h"
+#include "Mage.h"
 #include <utility>
 
 ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
@@ -14,7 +16,10 @@ std::optional<std::uint32_t> ConsoleUI::readSetupNumber(const std::string& promp
     return view_->readSetupNumber(prompt, min, max, cancel, initial);
 }
 
-void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
+void ConsoleUI::setStage(ViewStage stage) {
+    if (stage == ViewStage::MainMenu) cloneCounts_ = {};
+    view_->setStage(stage);
+}
 void ConsoleUI::clearDisplay() { view_->clearDisplay(); }
 
 std::optional<std::uint32_t> ConsoleUI::readNumberCancelable(const std::string& prompt,
@@ -60,18 +65,28 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
         for (std::size_t i = 0; i < army.size(); ++i) {
             const Unit& unit = *army.at(i);
             const auto* archer = dynamic_cast<const Archer*>(&unit);
+            const auto clone = cloneidentity::parse(unit.name());
             output.units.push_back({unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost(),
-                                    unit.meleeAttack(), unit.defense(), archer ? archer->rangedAttack() : 0});
+                                    unit.meleeAttack(), unit.defense(), archer ? archer->rangedAttack() : 0,
+                                    clone.number});
+            output.clonesCreated = std::max(output.clonesCreated, clone.number);
+            if (const auto* mage = dynamic_cast<const Mage*>(&unit))
+                output.clonesCreated = std::max(output.clonesCreated, mage->clonesCreated());
         }
     }
     snapshot.finished = a.isDefeated() || b.isDefeated();
+    for (int team = 0; team < 2; ++team)
+        cloneCounts_[team] = snapshot.armies[team].clonesCreated;
     // Копии остаются валидными после removeDead() на следующем ходе.
     view_->showArmies(snapshot);
 }
 
 void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937& rng) {
     for (const BattleEvent& event : events) {
-        view_->battleEvent(event, EventFormatter::format(event, rng, false));
+        auto text = EventFormatter::format(event, rng, false);
+        if (event.type == EventType::Clone && event.team >= 0 && event.team < 2)
+            text += " Создан «" + cloneLabel(++cloneCounts_[event.team]) + "».";
+        view_->battleEvent(event, text);
     }
 }
 

@@ -1,5 +1,6 @@
 #include "View.h"
 #include <charconv>
+#include "CloneIdentity.h"
 
 std::optional<std::uint32_t> parseNumber(const std::string& text,
                                        std::uint32_t min, std::uint32_t max) {
@@ -49,3 +50,8 @@ std::string counted(std::size_t count, const char* one, const char* few, const c
 }
 std::string unitCount(std::size_t count) { return counted(count,"боец","бойца","бойцов"); }
 std::string moneyCount(std::size_t count) { return counted(count,"монета","монеты","монет"); }
+
+std::string cloneLabel(std::size_t number) { return "Клон " + std::to_string(number); }
+std::string unitDisplayName(const UnitSnapshot& unit) {
+    return unit.cloneNumber ? cloneidentity::numbered(unit.name, unit.cloneNumber) : unit.name;
+}

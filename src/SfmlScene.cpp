@@ -666,13 +666,21 @@ void Scene::army(const State& s, int team) {
         disc(x + 42, 288, 11, i == 0 ? color : raised);
         label(std::to_string(i + 1), x + 38, 280, 10, i == 0 ? ink : muted);
         warrior(u.kind, x + 42, 351, 58, typeColor(u.kind), team == 1, opacity);
-        const auto name = battletext::unitLabel(u.name);
+        const auto name = battletext::unitLabel(cloneidentity::parse(u.name).base);
         text(fit(name.first, 70, 13), x + 7, 421, 13, paper);
         auto badges = u8(name.second);
         unsigned badgeSize = 13;
         while (badgeSize > 1 && textWidth(badges, badgeSize) > 70)
             --badgeSize;
-        text(badges, x + 7, 442, badgeSize, gold);
+        if (u.cloneNumber) {
+            box(x + 7, 440, 70, 18, raised, 5, alpha(gold, .35f));
+            const auto badge = u8(cloneLabel(u.cloneNumber));
+            unsigned size = 10;
+            while (size > 6 && textWidth(badge, size) > 64)
+                --size;
+            text(badge, x + 10, 441, size, gold);
+        } else
+            text(badges, x + 7, 442, badgeSize, gold);
         const auto statColor =
             target && s.effect && s.effect->event.type == EventType::Buff && s.effect->committed ? gold
                                                                                                  : paper;
@@ -688,7 +696,7 @@ void Scene::army(const State& s, int team) {
         if (sf::FloatRect({x, 297}, {84, 264}).contains(mouse_) && !s.playing) {
             const float tx = std::clamp(x - 40, 48.f, 760.f);
             box(tx, 573, 312, 79, raised, 9, gold);
-            text(fit(battletext::icons(u.name), 250, 14), tx + 12, 586, 14, paper);
+            text(fit(battletext::icons(unitDisplayName(u)), 288, 14), tx + 12, 586, 14, paper);
             text(fit("Здоровье " + std::to_string(u.hp) + "/" + std::to_string(u.maxHp), 288, 12), tx + 12,
                  608, 12, muted);
             text(fit("Атака " + std::to_string(u.attack) + " · Защита " + std::to_string(u.defense) +

@@ -106,7 +106,7 @@ Table armyRows(const ArmySnapshot& army, bool recruitment) {
     Table rows;
     for (std::size_t index = 0; index < army.units.size(); ++index) {
         const auto& unit = army.units[index];
-        rows.push_back({std::to_string(index + 1) + ". " + unitKindName(unit.kind) + " «" + unit.name + "»",
+        rows.push_back({std::to_string(index + 1) + ". " + unitKindName(unit.kind) + " «" + unitDisplayName(unit) + "»",
             "hp " + (recruitment ? std::to_string(unit.maxHp) :
                 std::to_string(unit.hp) + "/" + std::to_string(unit.maxHp)),
             "цена " + std::to_string(unit.cost)});

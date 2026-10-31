@@ -5,6 +5,7 @@
 #include "Event.h"
 #include "View.h"
 #include "UnitDecorator.h"
+#include "CloneIdentity.h"
 
 namespace presentation {
 struct Slot {
@@ -180,11 +181,14 @@ public:
         } else if (e.type == EventType::Buff) {
             if (auto unit = at(step.target))
                 applyEquipment(*unit, e.buff);
-        } else if (e.type == EventType::Clone) {
+        } else if (e.type == EventType::Clone && e.team >= 0 && e.team < 2) {
+            auto& army = frame.armies[e.team];
+            const auto number = ++army.clonesCreated;
             const auto source = at(step.target);
             if (source && step.actor.valid()) {
-                const auto copy = *source;
-                auto& army = frame.armies[step.actor.team];
+                auto copy = *source;
+                copy.cloneNumber = number;
+                copy.name = cloneidentity::numbered(copy.name, number);
                 army.units.insert(army.units.begin() + step.actor.index, copy);
                 army.totalCost += copy.cost;
                 ++casters_[step.actor.team];
