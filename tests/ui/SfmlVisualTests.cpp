@@ -32,6 +32,8 @@ int main(int argc, char** argv) {
                 if (a.position.x < 0 || a.position.y < 0 || a.position.x + a.size.x > Width ||
                     a.position.y + a.size.y > Height)
                     throw std::runtime_error(name + ": button outside canvas");
+                if (a.position.y >= 741 && a.size.y == FooterHeight && a.size.x != FooterButtonWidth)
+                    throw std::runtime_error(name + ": inconsistent footer button width");
                 for (std::size_t j = i + 1; j < buttons.size(); ++j)
                     if (a.findIntersection(buttons[j].bounds))
                         throw std::runtime_error(name + ": overlapping buttons");
@@ -39,6 +41,21 @@ int main(int argc, char** argv) {
             if (!target.getTexture().copyToImage().saveToFile(out / (name + ".png")))
                 throw std::runtime_error("PNG export failed");
             ++frames;
+        };
+        auto getButton = [&](int action) {
+            const auto found = std::find_if(scene.buttons().begin(), scene.buttons().end(),
+                                            [&](const Button& b) { return b.action == action; });
+            if (found == scene.buttons().end())
+                throw std::runtime_error("Missing button " + std::to_string(action));
+            return *found;
+        };
+        auto navigation = [&] {
+            const auto back = getButton(static_cast<int>(uiAction::Back));
+            const auto menu = getButton(0);
+            if (back.bounds.position.x + FooterButtonWidth + FooterGap != menu.bounds.position.x)
+                throw std::runtime_error("Back must be immediately left of Main Menu");
+            if (back.bounds.size.x != FooterButtonWidth || menu.bounds.size.x != FooterButtonWidth)
+                throw std::runtime_error("Navigation button widths differ");
         };
         State s;
         s.choices = {{1, "Новая партия"}, {2, "Загрузить"}, {0, "Выход"}};
@@ -49,12 +66,22 @@ int main(int argc, char** argv) {
         s.stage = ViewStage::Setup;
         s.choices = {{1, "Автобой"}, {2, "По одному ходу"}, {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("03-settings", s);
+        navigation();
+        State shared = s;
+        shared.choices[0].label = "Общий экран";
+        shared.choices[1].label = "Раздельный ввод";
+        render("23-shared-screen", shared);
+        navigation();
         s.enteringNumber = true;
         s.prompt = "Seed (например, 42): ";
         s.numberCancel = NumberCancel::Previous;
         s.input = "4294967295";
         s.selectAll = true;
-        render("04-number-dialog", s);
+        render("04-seed-page", s);
+        navigation();
+        if (getButton(Submit).bounds.position.x >= Width / 2 ||
+            getButton(static_cast<int>(uiAction::Back)).bounds.position.y <= 678)
+            throw std::runtime_error("Seed field/footer layout is wrong");
         s = {};
         s.stage = ViewStage::Recruitment;
         s.recruiting = true;
@@ -78,17 +105,62 @@ int main(int argc, char** argv) {
                                 {UnitKind::Archer, 18, 16, 4, 11, 3, 0, false},
                                 {UnitKind::Mage, 25, 14, 2, 60, 3, 0, false},
                                 {UnitKind::Healer, 22, 18, 2, 8, 3, 0, false}};
-        s.choices = {{1, "Случайный набор"},
-                     {2, "Ручная закупка"},
-                     {3, "Сжатый набор"},
-                     {30, "Армия готова"},
-                     {0, "В главное меню"}};
+        s.choices = {
+            {1, "Случайный набор"}, {2, "Ручная закупка"},     {3, "Сжатый набор"},
+            {20, "Убрать бойца"},   {21, "Переставить"},       {uiAction::ClearArmy, "Очистить армию"},
+            {30, "Армия готова"},   {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("05-army-methods", s);
+        navigation();
+        if (scene.rosterCards().size() != 5 || !getButton(RemoveBase).enabled ||
+            !getButton(static_cast<int>(uiAction::ClearArmy)).enabled ||
+            getButton(30).bounds.position.x + FooterButtonWidth + FooterGap !=
+                getButton(static_cast<int>(uiAction::Back)).bounds.position.x)
+            throw std::runtime_error("Main recruitment screen lacks direct army controls");
+        const State methods = s;
+        for (const auto grab : {sf::Vector2f(5, 12), sf::Vector2f(130, 125)}) {
+            DragState drag{2, {352 + grab.x, 584 + grab.y}, {352 + grab.x, 584 + grab.y}, true, grab};
+            if (dragPosition(drag) != sf::Vector2f(352, 584) || scene.dropTarget(drag) != 2)
+                throw std::runtime_error("Card jumps when grabbed near its edge");
+            drag.pointer.x = 500 - RosterCardSize.x / 2 + grab.x;
+            if (scene.dropTarget(drag) != 2)
+                throw std::runtime_error("Right drag advances before crossing the next center");
+            drag.pointer.x = 573 - RosterCardSize.x / 2 + grab.x;
+            if (scene.dropTarget(drag) != 3)
+                throw std::runtime_error("Right drag does not insert after the crossed card");
+            drag.from = 3;
+            drag.pointer.x = 500 - RosterCardSize.x / 2 + grab.x;
+            if (scene.dropTarget(drag) != 3)
+                throw std::runtime_error("Left drag advances before crossing the previous center");
+            drag.pointer.x = 420 - RosterCardSize.x / 2 + grab.x;
+            if (scene.dropTarget(drag) != 2)
+                throw std::runtime_error("Left drag does not insert before the crossed card");
+            drag.pointer.y = 150;
+            if (scene.dropTarget(drag))
+                throw std::runtime_error("Drop outside roster should cancel");
+        }
+        State empty = methods;
+        empty.battle.armies[0].units.clear();
+        empty.recruitment.spent = 0;
+        empty.recruitment.remaining = 120;
+        for (auto& choice : empty.choices)
+            if (choice.value == 30 || choice.value == uiAction::ClearArmy || choice.value == 20 ||
+                choice.value == 21)
+                choice.enabled = false;
+        render("24-empty-recruitment", empty);
+        if (getButton(30).enabled || getButton(static_cast<int>(uiAction::ClearArmy)).enabled)
+            throw std::runtime_error("Empty army can be confirmed or cleared");
         s.recruitment.screen = RecruitmentScreen::Academy;
-        s.choices = {{1, "Купить: Лёгкий"},     {2, "Купить: Тяжёлый", false},  {3, "Купить: Лучник", false},
-                     {4, "Купить: Маг", false}, {5, "Купить: Целитель", false}, {20, "Убрать бойца"},
-                     {21, "Переставить"},       {30, "Армия готова"},           {40, "Сохранить"},
-                     {uiAction::Back, "Назад"}, {0, "В главное меню"}};
+        s.choices = {{1, "Купить: Лёгкий"},
+                     {2, "Купить: Тяжёлый", false},
+                     {3, "Купить: Лучник", false},
+                     {4, "Купить: Маг", false},
+                     {5, "Купить: Целитель", false},
+                     {20, "Убрать бойца"},
+                     {21, "Переставить"},
+                     {uiAction::ClearArmy, "Очистить армию"},
+                     {30, "Армия готова"},
+                     {uiAction::Back, "Назад"},
+                     {0, "В главное меню"}};
         render("06-academy", s);
         if (std::none_of(scene.buttons().begin(), scene.buttons().end(),
                          [](const Button& b) { return b.action == static_cast<int>(uiAction::Back); }))
@@ -100,7 +172,7 @@ int main(int argc, char** argv) {
                 if (button.action == action)
                     throw std::runtime_error("Legacy army dialog button is visible");
         State drag = s;
-        drag.drag = DragState{0, {119, 624}, {421, 624}, true};
+        drag.drag = DragState{0, {119.5f, 654}, {440, 654}, true};
         render("19-dragging", drag);
         State moved = s;
         auto unit = moved.battle.armies[0].units[0];
@@ -109,24 +181,31 @@ int main(int argc, char** argv) {
         moved.rosterTransition =
             RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, 0, 2}, unit, .5f, sf::Vector2f(352, 584)};
         render("20-reordering", moved);
-        State generated = s;
-        generated.recruitment.screen = RecruitmentScreen::Generated;
-        generated.choices = {{1, "Создать снова"}, {2, "Ручная закупка"}, {3, "Другой способ набора"},
-                             {30, "Армия готова"}, {40, "Сохранить"},     {uiAction::Back, "Назад"},
-                             {0, "В главное меню"}};
-        render("21-generated-preview", generated);
+        State generated = methods;
+        render("21-generated-on-methods", generated);
+        State methodDrag = methods;
+        methodDrag.drag = drag.drag;
+        render("25-drag-on-methods", methodDrag);
+        State methodTransition = moved;
+        methodTransition.recruitment.screen = RecruitmentScreen::Methods;
+        methodTransition.choices = methods.choices;
+        render("26-reorder-on-methods", methodTransition);
         State budget = s;
         budget.stage = ViewStage::Setup;
         budget.enteringNumber = true;
-        budget.numberCancel = NumberCancel::MainMenu;
+        budget.numberCancel = NumberCancel::Previous;
         budget.prompt = "Лимит цены каждой армии: ";
         budget.input = "120";
         budget.choices.clear();
         render("22-budget-page", budget);
+        navigation();
+        if (getButton(Submit).bounds.position.x >= Width / 2)
+            throw std::runtime_error("Budget field should be on the left");
+        budget.error = "Введите число от 10 до 2147483647.";
+        render("27-budget-error", budget);
 
         s.recruiting = false;
-        s.choices = {{1, "К бою"},     {2, "Изменить армии"}, {3, "Настройки"},
-                     {4, "Загрузить"}, {40, "Сохранить"},     {0, "В главное меню"}};
+        s.choices = {{1, "К бою"}, {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("07-ready", s);
         s.stage = ViewStage::Battle;
         s.turn = 17;
@@ -167,7 +246,7 @@ int main(int argc, char** argv) {
         s.stage = ViewStage::Result;
         s.waiting = false;
         s.winner = 0;
-        s.choices = {{1, "Новая партия"}, {2, "Загрузить"}, {40, "Сохранить"}, {0, "В главное меню"}};
+        s.choices = {{1, "Новая партия"}, {2, "Загрузить"}, {0, "В главное меню"}};
         render("10-result", s);
         s.enteringText = true;
         s.prompt = "Имя сохранения [Партия 1]: ";
@@ -199,8 +278,10 @@ int main(int argc, char** argv) {
         paged.recruitment.spent = 2147483637;
         paged.recruitment.remaining = 10;
         paged.recruitment.offers = {{UnitKind::Light, 10, 20, 7, 0, 0, 1, true}};
-        paged.choices = {{1, "Купить: Лёгкий"}, {20, "Убрать бойца"}, {21, "Переставить"},
-                         {30, "Армия готова"},  {40, "Сохранить"},    {0, "В главное меню"}};
+        paged.choices = {{1, "Купить: Лёгкий"}, {20, "Убрать бойца"},
+                         {21, "Переставить"},   {uiAction::ClearArmy, "Очистить армию"},
+                         {30, "Армия готова"},  {uiAction::Back, "Назад"},
+                         {0, "В главное меню"}};
         render("17-large-budget", paged);
         paged.enteringNumber = true;
         paged.numberCancel = NumberCancel::Dialog;

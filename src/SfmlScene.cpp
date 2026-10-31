@@ -384,28 +384,29 @@ void Scene::settings(const State& s) {
         104, 279, 510, 17, muted);
     crest(1120, 196, 130, alpha(gold, .18f));
     if (s.enteringNumber && s.numberCancel != NumberCancel::Dialog) {
-        box(752, 296, 584, 330, panel, 16, border);
-        label(seed ? "Seed партии" : "Лимит каждой армии", 780, 320, 23, paper, true);
-        box(780, 371, 528, 78, ink, 10, s.error.empty() ? gold : red);
-        const auto value = fit(s.input, 476, 36);
+        box(104, 392, 584, 286, panel, 16, border);
+        label(seed ? "Seed партии" : "Лимит каждой армии", 132, 412, 23, paper, true);
+        box(132, 458, 528, 64, ink, 10, s.error.empty() ? gold : red);
+        const auto value = fit(s.input, 476, 32);
         if (s.selectAll)
-            box(795, 383, std::max(14.f, textWidth(value, 36) + 8), 49, alpha(gold, .25f), 4);
-        text(value + (s.selectAll ? sf::String{} : sf::String("|")), 798, 383, 36, paper);
+            box(147, 467, std::max(14.f, textWidth(value, 32) + 8), 46, alpha(gold, .25f), 4);
+        text(value + (s.selectAll ? sf::String{} : sf::String("|")), 150, 467, 32, paper);
         paragraph(s.error.empty() ? (seed ? "От 0 до 4 294 967 295. Ноль — допустимый seed."
                                           : "Одинаковый бюджет для двух армий.")
                                   : s.error,
-                  782, 472, 512, 14, s.error.empty() ? muted : red, 2);
-        const bool back = s.numberCancel == NumberCancel::Previous;
-        button("Продолжить", 780, 548, back ? 252 : 528, Submit, true, true, 50);
-        if (back)
-            button("Назад", 1044, 548, 264, static_cast<int>(uiAction::Back), true, false, 50);
-        button("В главное меню", 104, 741, 260, 0);
+                  134, 538, 512, 14, s.error.empty() ? muted : red, 2);
+        button("Продолжить", 132, 610, FooterButtonWidth, Submit);
+        button("Назад", 104, 741, FooterButtonWidth, static_cast<int>(uiAction::Back), true, false,
+               FooterHeight);
+        button("В главное меню", 104 + FooterButtonWidth + FooterGap, 741, FooterButtonWidth, 0, true, false,
+               FooterHeight);
     }
     if (!s.enteringNumber && !s.enteringText) {
         std::size_t i = 0;
         for (const auto& c : s.choices) {
             if (c.value == 0 || c.value == uiAction::Back) {
-                button(c.label, c.value == 0 ? 104 : 390, 741, 260, static_cast<int>(c.value), c.enabled);
+                button(c.label, c.value == uiAction::Back ? 104 : 104 + FooterButtonWidth + FooterGap, 741,
+                       FooterButtonWidth, static_cast<int>(c.value), c.enabled, false, FooterHeight);
                 continue;
             }
             const float x = 104.f + i * 622.f;
@@ -427,19 +428,16 @@ void Scene::settings(const State& s) {
 void Scene::actions(const State& s, float x, float y, float width, int columns) {
     std::vector<MenuChoice> entries;
     for (const auto& c : s.choices)
-        if (c.label.rfind("Купить:", 0) != 0 &&
-            !(s.recruiting && s.recruitment.screen == RecruitmentScreen::Academy &&
-              (c.value == 20 || c.value == 21)))
+        if (c.label.rfind("Купить:", 0) != 0 && !(s.recruiting && (c.value == 20 || c.value == 21)))
             entries.push_back(c);
     if (entries.empty())
         return;
-    columns = std::min(columns, static_cast<int>(entries.size()));
-    const float step = (width + 12) / columns;
+    const float step = FooterButtonWidth + FooterGap;
+    columns = std::max(1, std::min(columns, static_cast<int>((width + FooterGap) / step)));
     for (std::size_t i = 0; i < entries.size(); ++i) {
         const auto& c = entries[i];
-        button(c.label, x + (i % columns) * step, y + (i / columns) * 56.f, step - 12,
-               static_cast<int>(c.value), c.enabled,
-               c.label == "К бою" || c.label == "Армия готова" || (i == 0 && entries.size() < 4));
+        button(c.label, x + (i % columns) * step, y + (i / columns) * (FooterHeight + FooterGap),
+               FooterButtonWidth, static_cast<int>(c.value), c.enabled, false, FooterHeight);
     }
 }
 void Scene::recruitment(const State& s) {
@@ -447,10 +445,7 @@ void Scene::recruitment(const State& s) {
     const auto color = teamColor(r.activeTeam);
     header("Набор армии", r.activeTeam == 0 ? "Полководец I · Синие" : "Полководец II · Красные");
     label("ПОД ВАШИМ ЗНАМЕНЕМ", 50, 120, 11, color);
-    label(methodScreen(s)                            ? "Призовите свой отряд"
-          : r.screen == RecruitmentScreen::Generated ? "Ваш отряд готов"
-                                                     : "Военная академия",
-          48, 145, 43, paper, true);
+    label(methodScreen(s) ? "Призовите свой отряд" : "Военная академия", 48, 145, 43, paper, true);
     box(1008, 120, 382, 65, panel, 12, border);
     label("БЮДЖЕТ", 1028, 132, 10, muted);
     {
@@ -482,7 +477,7 @@ void Scene::recruitment(const State& s) {
                                     "Плотный строй с упором\nна доступных бойцов."};
         int i = 0;
         for (const auto& c : s.choices) {
-            if (c.value == 0 || c.value == 30 || c.value == uiAction::Back)
+            if (c.value < 1 || c.value > 3)
                 continue;
             const float x = 128.f + i * 406.f;
             box(x, 246, 374, 285, panel, 16, border);
@@ -499,21 +494,9 @@ void Scene::recruitment(const State& s) {
         State footer = s;
         footer.choices.clear();
         for (const auto& c : s.choices)
-            if (c.value == 0 || c.value == 30 || c.value == uiAction::Back)
+            if (c.value == 0 || c.value == 30 || c.value == uiAction::ClearArmy || c.value == uiAction::Back)
                 footer.choices.push_back(c);
-        actions(footer, 50, 800, 1340, 3);
-    } else if (r.screen == RecruitmentScreen::Generated) {
-        box(50, 225, 1340, 295, panel, 16, border);
-        label("Строй сформирован", 86, 254, 40, paper, true);
-        paragraph("Проверьте состав перед подтверждением. Можно создать отряд снова, перейти в академию или "
-                  "выбрать другой способ набора.",
-                  88, 322, 720, 18, muted, 3);
-        for (int i = 0; i < 3; ++i)
-            warrior(i == 0   ? UnitKind::Light
-                    : i == 1 ? UnitKind::Heavy
-                             : UnitKind::Archer,
-                    990.f + i * 130.f, 292, 105, gold);
-        actions(s, 50, 785, 1340, 4);
+        actions(footer, 50, 800, 1340, 4);
     } else {
         for (std::size_t i = 0; i < r.offers.size(); ++i) {
             const auto& o = r.offers[i];
@@ -540,13 +523,12 @@ void Scene::recruitment(const State& s) {
             if (choice != s.choices.end())
                 button("Нанять", x + 18, 473, w - 36, static_cast<int>(id), choice->enabled, false, 44);
         }
-        actions(s, 50, 785, 1340, 5);
+        actions(s, 50, 800, 1340, 4);
     }
     const auto& a = s.battle.armies[r.activeTeam];
     label("Ваш строй / " + unitCount(a.units.size()), 50, 550, 14, color);
     const auto offset =
         std::min(s.offsets[r.activeTeam], a.units.empty() ? 0 : ((a.units.size() - 1) / 8) * 8);
-    const bool editable = r.screen == RecruitmentScreen::Academy;
     auto card = [&](const UnitSnapshot& unit, std::size_t index, float x, float y, bool ghost = false) {
         box(x, y + 3, 139, 140, alpha(sf::Color::Black, .2f), 11);
         box(x, y, 139, 140, ghost ? raised : panel, 11, ghost ? gold : border);
@@ -558,7 +540,7 @@ void Scene::recruitment(const State& s) {
             label(unitKindName(unit.kind), x + 12, y + 105, 11, muted);
         else
             text(u8(name.second), x + 12, y + 105, 13, gold);
-        if (editable && !ghost) {
+        if (!ghost) {
             rosterCards_.push_back({{{x, y}, {139, 140}}, index});
             if (!s.rosterTransition)
                 button("×", x + 106, y + 8, 24, RemoveBase + static_cast<int>(index), true, false, 24);
@@ -599,21 +581,32 @@ void Scene::recruitment(const State& s) {
     }
     if (s.drag && s.drag->active && s.drag->from < a.units.size()) {
         const auto& d = *s.drag;
-        const auto nearest = std::min_element(rosterCards_.begin(), rosterCards_.end(),
-                                              [&](const RosterCard& x, const RosterCard& y) {
-                                                  return std::abs(d.pointer.x - x.bounds.position.x - 69) <
-                                                         std::abs(d.pointer.x - y.bounds.position.x - 69);
-                                              });
-        if (nearest != rosterCards_.end())
-            box(nearest->bounds.position.x - 4, 578, 3, 152, gold, 1);
-        card(a.units[d.from], d.from, std::clamp(d.pointer.x - 69.f, 48.f, 1248.f),
-             std::clamp(d.pointer.y - 35.f, 570.f, 620.f), true);
+        if (const auto target = dropTarget(d); target && *target != d.from) {
+            const auto anchor = std::find_if(rosterCards_.begin(), rosterCards_.end(),
+                                             [&](const RosterCard& c) { return c.index == *target; });
+            const float marker =
+                anchor != rosterCards_.end()
+                    ? anchor->bounds.position.x + (*target > d.from ? RosterCardSize.x + 4 : -4)
+                : *target > rosterCards_.back().index
+                    ? rosterCards_.back().bounds.position.x + RosterCardSize.x + 4
+                    : rosterCards_.front().bounds.position.x - 4;
+            box(marker, 578, 3, 152, gold, 1);
+        }
+        const auto position = dragPosition(d);
+        card(a.units[d.from], d.from, position.x, position.y, true);
     }
-    label(editable
-              ? "Перетаскивайте карточки для перестановки. × — убрать бойца. Колесо мыши — страницы строя."
-              : "Подтвердите состав кнопкой «Армия готова» или измените отряд.",
-          50, 739, 12, muted);
+    label("Перетаскивайте карточки для перестановки. × — убрать бойца. Колесо мыши — страницы строя.", 50,
+          739, 12, muted);
     notice(s, 825, 724, 565);
+}
+std::optional<std::size_t> Scene::dropTarget(const DragState& drag) const {
+    const auto center = dragPosition(drag) + RosterCardSize / 2.f;
+    if (!sf::FloatRect({48, 570}, {1210, 174}).contains(center))
+        return std::nullopt;
+    std::vector<ArmyCardSlot> slots;
+    for (const auto& card : rosterCards_)
+        slots.push_back({card.index, card.bounds.position.x + card.bounds.size.x / 2});
+    return armyDropIndex(drag.from, center.x, slots);
 }
 sf::Vector2f Scene::slotCenter(presentation::Slot slot, const State& s) const {
     if (!slot.valid())
@@ -725,10 +718,13 @@ void Scene::field(const State& s) {
         effects(s);
     journal(s);
     if (s.waiting || s.playing) {
-        button(s.playing ? "Ход воспроизводится" : "Следующий ход", 32, 778, 254, Next, !s.playing, true, 52);
-        button(s.automatic ? "Автобой: вкл." : "Автобой: выкл.", 298, 778, 228, Auto, true, false, 52);
-        button("Сохранить", 538, 778, 192, Save, true, false, 52);
-        button("В главное меню", 742, 778, 310, 0, true, false, 52);
+        const float step = FooterButtonWidth + FooterGap;
+        button(s.playing ? "Ход воспроизводится" : "Следующий ход", 32, 778, FooterButtonWidth, Next,
+               !s.playing, false, FooterHeight);
+        button(s.automatic ? "Автобой: вкл." : "Автобой: выкл.", 32 + step, 778, FooterButtonWidth, Auto,
+               true, false, FooterHeight);
+        button("Сохранить", 32 + 2 * step, 778, FooterButtonWidth, Save, true, false, FooterHeight);
+        button("В главное меню", 32 + 3 * step, 778, FooterButtonWidth, 0, true, false, FooterHeight);
         label("Enter / пробел — ход     A — режим     S — сохранить", 34, 851, 11, muted);
         button(s.speed == .5f   ? "Темп ×0.5"
                : s.speed == 1.f ? "Темп ×1"
@@ -911,9 +907,11 @@ void Scene::modal(const State& s) {
                                         : "Введите целое число. Enter — продолжить.")
                       : s.error,
                   398, 461, 630, 13, s.error.empty() ? muted : red);
-        button(s.enteringText ? "Сохранить" : "Продолжить", 396, 552, 316, Submit, true, true, 52);
-        button(s.enteringText || s.numberCancel == NumberCancel::Dialog ? "Отмена" : "В главное меню", 728,
-               552, 316, Cancel, true, false, 52);
+        button(s.enteringText ? "Сохранить" : "Продолжить", 468, 552, FooterButtonWidth, Submit, true, false,
+               FooterHeight);
+        button(s.enteringText || s.numberCancel == NumberCancel::Dialog ? "Отмена" : "В главное меню",
+               468 + FooterButtonWidth + FooterGap, 552, FooterButtonWidth, Cancel, true, false,
+               FooterHeight);
     } else {
         if (!s.choices.empty() && contains(s.choices.front().label, "Заменить"))
             paragraph("Текущая партия будет заменена выбранным сохранением.", 398, 336, 630, 15, muted);
@@ -921,7 +919,8 @@ void Scene::modal(const State& s) {
             paragraph(s.notices.back(), 398, 336, 630, 15, muted);
         for (std::size_t i = 0; i < s.choices.size(); ++i) {
             const auto& c = s.choices[i];
-            button(c.label, 396 + i * 332.f, 552, 316, static_cast<int>(c.value), c.enabled, i == 0, 52);
+            button(c.label, 468 + i * (FooterButtonWidth + FooterGap), 552, FooterButtonWidth,
+                   static_cast<int>(c.value), c.enabled, false, FooterHeight);
         }
     }
 }
@@ -942,8 +941,9 @@ void Scene::draw(sf::RenderTarget& target, const State& s, sf::Vector2f mouse) {
         label("Теперь ваш ход, полководец", 414, 388, 45, paper, true);
         label("Игрок " + std::to_string(s.handoff + 1), 642, 461, 28, teamColor(s.handoff), true);
         label("Предыдущий игрок должен отвернуться от экрана.", 502, 526, 16, muted);
-        button("Я готов — продолжить", 430, 600, 420, Submit, true, true, 58);
-        button("Назад", 868, 600, 200, static_cast<int>(uiAction::Back), true, false, 58);
+        button("Я готов — продолжить", 468, 600, FooterButtonWidth, Submit, true, false, FooterHeight);
+        button("Назад", 468 + FooterButtonWidth + FooterGap, 600, FooterButtonWidth,
+               static_cast<int>(uiAction::Back), true, false, FooterHeight);
         return;
     }
     const bool confirm = confirmation(s);

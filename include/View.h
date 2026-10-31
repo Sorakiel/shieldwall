@@ -12,9 +12,9 @@
 enum class ViewStage { MainMenu, Setup, Recruitment, Battle, Result };
 enum class NumberCancel { MainMenu, Dialog, Previous };
 namespace uiAction {
-inline constexpr std::uint32_t Back = 0x70000000u, ArmyEdit = 0x70000001u;
+inline constexpr std::uint32_t Back = 0x70000000u, ArmyEdit = 0x70000001u, ClearArmy = 0x70000002u;
 }
-enum class RecruitmentScreen { Methods, Academy, Generated };
+enum class RecruitmentScreen { Methods, Academy };
 struct ArmyEdit {
     enum class Kind { Remove, Move } kind = Kind::Remove;
     std::size_t from = 0, to = 0;
