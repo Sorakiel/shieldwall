@@ -2,6 +2,7 @@
 #include "TextInput.h"
 #include "BattleLog.h"
 #include "EquipmentGlyphs.h"
+#include "ShortcutGuard.h"
 #include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <deque>
@@ -76,6 +77,7 @@ struct SfmlView::Impl {
     TextInput textInput;
     bool selectAll = true;
     bool waitingForTurn = false;
+    ShortcutGuard shortcuts;
     std::string prompt;
     std::string input;
     std::string error;
@@ -449,6 +451,22 @@ struct SfmlView::Impl {
         window.display();
     }
 
+    static bool modifierKey(sf::Keyboard::Key key) {
+        using Key = sf::Keyboard::Key;
+        return key == Key::LAlt || key == Key::RAlt || key == Key::LControl ||
+            key == Key::RControl || key == Key::LShift || key == Key::RShift ||
+            key == Key::LSystem || key == Key::RSystem;
+    }
+
+    bool modifiersDown() const {
+        using Key = sf::Keyboard::Key;
+        for (const auto key : {Key::LAlt, Key::RAlt, Key::LControl, Key::RControl,
+                              Key::LShift, Key::RShift, Key::LSystem, Key::RSystem}) {
+            if (sf::Keyboard::isKeyPressed(key)) return true;
+        }
+        return false;
+    }
+
     std::optional<int> pollAction() {
         while (const auto event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) {
@@ -458,6 +476,11 @@ struct SfmlView::Impl {
             if (const auto* resized = event->getIf<sf::Event::Resized>()) {
                 updateViewport(resized->size);
             }
+            if (event->is<sf::Event::FocusLost>() || event->is<sf::Event::FocusGained>()) {
+                shortcuts.cancel();
+            }
+            // Resize/close still work without focus; gameplay input must not.
+            if (!window.hasFocus()) { shortcuts.cancel(); continue; }
             if (const auto* entered = event->getIf<sf::Event::TextEntered>()) {
                 if (enteringText && entered->unicode >= 0x20) {
                     if (selectAll) textInput.clear();
@@ -473,6 +496,18 @@ struct SfmlView::Impl {
                 }
             }
             if (const auto* key = event->getIf<sf::Event::KeyPressed>()) {
+                const bool modified = key->alt || key->control || key->shift || key->system || modifiersDown();
+                if (modified || modifierKey(key->code)) shortcuts.cancel();
+                if (waitingForTurn && !enteringNumber && !enteringText &&
+                    key->code == sf::Keyboard::Key::S) shortcuts.pressSave(true, modified);
+                // TextEntered handles shifted characters separately; Ctrl+A is
+                // the only modified key command handled by our input fields.
+                if ((enteringNumber || enteringText) && key->control && !key->alt &&
+                    !key->system && key->code == sf::Keyboard::Key::A) {
+                    selectAll = true;
+                    continue;
+                }
+                if (!ShortcutGuard::plain(true, modified)) continue;
                 if (key->code == sf::Keyboard::Key::Escape) {
                     if (enteringText || enteringNumber) return cancelAction;
                     if (!enteringNumber && std::any_of(choices.begin(), choices.end(),
@@ -486,7 +521,6 @@ struct SfmlView::Impl {
                     return submitAction;
                 }
                 if (enteringNumber || enteringText) {
-                    if (key->control && key->code == sf::Keyboard::Key::A) selectAll = true;
                     if (key->code == sf::Keyboard::Key::Backspace) {
                         if (enteringText) {
                             if (selectAll) textInput.clear();
@@ -509,8 +543,12 @@ struct SfmlView::Impl {
             }
             // KeyReleased не оставляет TextEntered('s') в очереди нового поля.
             if (const auto* key = event->getIf<sf::Event::KeyReleased>()) {
-                if (waitingForTurn && !enteringNumber && !enteringText &&
-                    key->code == sf::Keyboard::Key::S) return saveAction;
+                const bool modified = key->alt || key->control || key->shift || key->system || modifiersDown();
+                if (modified || modifierKey(key->code)) shortcuts.cancel();
+                if (key->code == sf::Keyboard::Key::S) {
+                    const bool save = shortcuts.releaseSave(window.hasFocus(), modified);
+                    if (save && waitingForTurn && !enteringNumber && !enteringText) return saveAction;
+                }
             }
             if (const auto* wheel = event->getIf<sf::Event::MouseWheelScrolled>()) {
                 if (enteringNumber || enteringText || handoffTeam >= 0) continue;
@@ -561,6 +599,7 @@ struct SfmlView::Impl {
             if (automatic && autoClock.getElapsedTime().asMilliseconds() >= 550) break;
         }
         waitingForTurn = false;
+        if (outcome != TurnAction::Next) shortcuts.cancel();
         return outcome;
     }
 };
@@ -569,6 +608,7 @@ SfmlView::SfmlView(const std::filesystem::path& fontPath) : impl_(std::make_uniq
 SfmlView::~SfmlView() = default;
 
 void SfmlView::setStage(ViewStage stage) {
+    impl_->shortcuts.cancel();
     impl_->stage = stage;
     impl_->choices.clear();
     impl_->recruiting = false;
@@ -606,6 +646,7 @@ std::optional<std::uint32_t> SfmlView::readNumberCancelable(const std::string& p
 
 std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
                                                 std::uint32_t min, std::uint32_t max) {
+    impl_->shortcuts.cancel();
     impl_->enteringNumber = true;
     impl_->window.setKeyRepeatEnabled(true);
     impl_->prompt = prompt;
@@ -634,6 +675,7 @@ std::optional<std::uint32_t> SfmlView::readNumber(const std::string& prompt,
 }
 
 std::optional<std::string> SfmlView::readText(const std::string& prompt, std::size_t maxBytes) {
+    impl_->shortcuts.cancel();
     impl_->enteringText = true;
     impl_->window.setKeyRepeatEnabled(true);
     impl_->prompt = prompt;

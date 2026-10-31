@@ -5,6 +5,7 @@
 #include <vector>
 #include "ConsoleView.h"
 #include "BattleLog.h"
+#include "ShortcutGuard.h"
 
 namespace {
 int failures = 0;
@@ -233,9 +234,81 @@ void testEquipmentLabels() {
     CHECK(custom.first == "Имя [щит] внутри [неизвестно]");
     CHECK(custom.second.empty());
 }
+void testColoredArmyBlocks() {
+    BattleSnapshot frame;
+    frame.armies[0] = {"Синие", 20, {{UnitKind::Light, "Мирн", 20, 20, 10},
+                                    {UnitKind::Light, "Дарр", 16, 20, 10}}};
+    frame.armies[1] = {"Красные", 30, {{UnitKind::Heavy, "Брон", 44, 45, 30}}};
+    std::istringstream input;
+    std::ostringstream colored, plain;
+    ConsoleView colorView(input, colored, ConsoleColorMode::Always);
+    ConsoleView plainView(input, plain, ConsoleColorMode::Never);
+    colorView.showArmies(frame);
+    plainView.showArmies(frame);
+    colorView.message("Нейтральное сообщение");
+    plainView.message("Нейтральное сообщение");
+    const auto text = colored.str();
+    const auto blueStart = text.find("\033[94mСиние");
+    const auto blueEnd = text.find("\033[0m", blueStart);
+    const auto redStart = text.find("\033[91mКрасные", blueEnd);
+    const auto redEnd = text.find("\033[0m", redStart);
+    CHECK(blueStart != std::string::npos && blueEnd != std::string::npos);
+    CHECK(redStart != std::string::npos && redEnd != std::string::npos);
+    if (blueStart == std::string::npos || blueEnd == std::string::npos ||
+        redStart == std::string::npos || redEnd == std::string::npos) return;
+    const auto blue = text.substr(blueStart, blueEnd - blueStart);
+    const auto red = text.substr(redStart, redEnd - redStart);
+    CHECK(blue.find("Мирн") != std::string::npos && blue.find("Дарр") != std::string::npos);
+    CHECK(blue.find("hp 16/20") != std::string::npos && blue.find("цена 10") != std::string::npos);
+    CHECK(red.find("Брон") != std::string::npos && red.find("hp 44/45") != std::string::npos);
+    CHECK(text.find("Нейтральное сообщение") > redEnd);
+    auto stripped = text;
+    for (const auto code : {"\033[94m", "\033[91m", "\033[0m"}) {
+        for (auto at = stripped.find(code); at != std::string::npos; at = stripped.find(code))
+            stripped.erase(at, std::string(code).size());
+    }
+    CHECK(stripped == plain.str());
+    CHECK(plain.str().find("\033[") == std::string::npos);
+    frame.armies[0].units.clear();
+    std::ostringstream empty;
+    ConsoleView emptyView(input, empty, ConsoleColorMode::Always);
+    emptyView.showArmies(frame);
+    CHECK(empty.str().find("Строй пуст.\n\033[0m") != std::string::npos);
+}
+
+void testShortcutGestures() {
+    ShortcutGuard guard;
+    CHECK(ShortcutGuard::plain(true, false));
+    CHECK(!ShortcutGuard::plain(true, true));
+    CHECK(!ShortcutGuard::plain(false, false));
+    CHECK(!guard.releaseSave(true, false)); // An orphan key-up is not a save.
+    guard.pressSave(true, false);
+    CHECK(guard.releaseSave(true, false));
+    CHECK(!guard.releaseSave(true, false));
+    guard.pressSave(true, true); // Win+Shift+S; modifiers can be released first.
+    CHECK(!guard.releaseSave(true, false));
+    guard.pressSave(true, true);
+    CHECK(!guard.releaseSave(true, true));
+    guard.pressSave(true, false);
+    guard.cancel(); // A modifier was pressed after S, then released before S.
+    CHECK(!guard.releaseSave(true, false));
+    guard.pressSave(true, false);
+    CHECK(!guard.releaseSave(true, true));
+    guard.pressSave(true, false);
+    guard.cancel(); // Focus lost and restored while S was down.
+    CHECK(!guard.releaseSave(true, false));
+    guard.pressSave(false, false);
+    CHECK(!guard.releaseSave(true, false));
+    guard.pressSave(true, false);
+    CHECK(!guard.releaseSave(false, false));
+    guard.pressSave(true, false); // A fresh plain press still works after cancellation.
+    CHECK(guard.releaseSave(true, false));
+}
 }  // namespace
 
 int main() {
+    testColoredArmyBlocks();
+    testShortcutGestures();
     testTurnBlocksAndColors();
     testEquipmentLabels();
     testRecruitment();
