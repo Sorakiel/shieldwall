@@ -16,11 +16,11 @@ BattleSnapshot frame() {
     BattleSnapshot s;
     s.armies[0] = {"Синие",
                    100,
-                   {{UnitKind::Heavy, "Брон", 30, 45, 30},
-                    {UnitKind::Light, "Мирн", 10, 20, 10},
-                    {UnitKind::Archer, "Дарр", 16, 16, 18},
-                    {UnitKind::Mage, "Зэн", 14, 14, 25},
-                    {UnitKind::Healer, "Тиль", 18, 18, 22}}};
+                   {{UnitKind::Heavy, "Брон", 30, 45, 30, 9, 5},
+                    {UnitKind::Light, "Мирн", 10, 20, 10, 7, 1},
+                    {UnitKind::Archer, "Дарр", 16, 16, 18, 4, 0, 11},
+                    {UnitKind::Mage, "Зэн", 14, 14, 25, 2, 0},
+                    {UnitKind::Healer, "Тиль", 18, 18, 22, 2, 0}}};
     s.armies[1] = {
         "Красные", 50, {{UnitKind::Light, "Вейн", 20, 20, 10}, {UnitKind::Archer, "Орн", 16, 16, 18}}};
     return s;
@@ -89,6 +89,7 @@ void testEffectsChangeOnlySnapshots() {
     CHECK(s.armies[0].units.size() == 6);
     CHECK(s.armies[0].units[3].kind == UnitKind::Archer && s.armies[0].units[3].name == "Дарр");
     CHECK(s.armies[0].units[3].hp == 16);
+    CHECK(s.armies[0].units[3].attack == 4 && s.armies[0].units[3].rangedAttack == 11);
     CHECK(s.armies[0].units[4].kind == UnitKind::Mage);
     BattleEvent buff{EventType::Buff, 2, 0, "Мирн", "Брон"};
     buff.buff = "щит";
@@ -119,10 +120,38 @@ void testEffectsChangeOnlySnapshots() {
     CHECK(!step.actor.valid() && !step.target.valid());
     playback.commit(s, step);
 }
+void testEquipmentStatsAtImpact() {
+    auto s = frame();
+    auto& heavy = s.armies[0].units[0];
+    heavy.attack = 17;
+    heavy.defense = 12;
+    std::unique_ptr<Unit> expected = std::make_unique<HeavyUnit>("Брон", 45, 17, 12, 30);
+    presentation::Playback playback;
+    int turn = 0;
+    for (const auto buff : {BuffKind::Helmet, BuffKind::Shield, BuffKind::Spear, BuffKind::Horse}) {
+        BattleEvent event{EventType::Buff, ++turn, 0, "Мирн", heavy.name};
+        event.buff = buffName(buff);
+        auto step = playback.begin(s, event);
+        const int beforeAttack = heavy.attack, beforeDefense = heavy.defense;
+        CHECK(!step.advance(presentation::duration(event.type) * .49f));
+        CHECK(heavy.attack == beforeAttack && heavy.defense == beforeDefense);
+        CHECK(step.advance(presentation::duration(event.type) * .02f));
+        playback.commit(s, step);
+        expected = decorate(std::move(expected), buff);
+        CHECK(heavy.attack == expected->meleeAttack() && heavy.defense == expected->defense());
+        CHECK(heavy.name == expected->name());
+        CHECK(heavy.hp == 30 && heavy.maxHp == 45 && heavy.cost == 30);
+        CHECK(!step.advance(10));
+        // A repeated equipment marker cannot add the same bonus twice.
+        presentation::applyEquipment(heavy, event.buff);
+        CHECK(heavy.attack == expected->meleeAttack() && heavy.defense == expected->defense());
+    }
+    CHECK(heavy.attack == 23 && heavy.defense == 18);
+}
 void testDuplicateNamesAndReplayBoundary() {
     auto s = frame();
     presentation::Playback playback;
-    s.armies[0].units[3] = {UnitKind::Archer, "Дарр", 16, 16, 18};
+    s.armies[0].units[3] = {UnitKind::Archer, "Дарр", 16, 16, 18, 4, 0, 11};
     BattleEvent shot{EventType::Shot, 1, 0, "Дарр", "Вейн", 4, 16};
     auto first = playback.begin(s, shot);
     playback.commit(s, first);
@@ -156,6 +185,7 @@ void testDuplicateNamesAndReplayBoundary() {
 int main() {
     testTimingAndJournal();
     testEffectsChangeOnlySnapshots();
+    testEquipmentStatsAtImpact();
     testDuplicateNamesAndReplayBoundary();
     std::cout << (failures ? "Presentation tests failed\n" : "Presentation tests passed\n");
     return failures ? 1 : 0;
