@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "Unit.h"
+#include "Event.h"
 
 enum class ViewStage { MainMenu, Setup, Recruitment, Battle, Result };
 enum class NumberCancel { MainMenu, Dialog };
@@ -92,6 +93,9 @@ public:
     virtual void battleMessage(int turn, int team, const std::string& text) {
         message("[Ход " + std::to_string(turn) + "] [" +
             (team == 0 ? "Синие" : team == 1 ? "Красные" : "Без команды") + "] " + text);
+    }
+    virtual void battleEvent(const BattleEvent& event, const std::string& text) {
+        battleMessage(event.turn, event.team, text);
     }
     virtual void showArmies(const BattleSnapshot& snapshot) = 0;
     virtual void showResult(int, const std::string& text) { message(text); }
