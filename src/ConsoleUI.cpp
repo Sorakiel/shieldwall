@@ -60,7 +60,9 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
 }
 
 void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937& rng) {
-    for (const BattleEvent& event : events) message(EventFormatter::format(event, rng));
+    for (const BattleEvent& event : events) {
+        view_->battleMessage(event.turn, event.team, EventFormatter::format(event, rng, false));
+    }
 }
 
 void ConsoleUI::showResult(int winner) {

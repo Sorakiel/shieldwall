@@ -18,11 +18,13 @@ public:
     bool handoff(int team) override;
     void showRecruitment(const RecruitmentSnapshot& snapshot) override;
     void message(const std::string& text) override;
+    void battleMessage(int turn, int team, const std::string& text) override;
     void showArmies(const BattleSnapshot& snapshot) override;
 
 private:
     std::istream& in_;
     std::ostream& out_;
     bool lastLineBlank_ = true;
+    int logTurn_ = -1;
     void separateBlock();
 };

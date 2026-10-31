@@ -23,7 +23,7 @@ RunResult BattleRunner::run(BattleEngine& engine, Army& a, Army& b, std::mt19937
         // Сохраняем завершённый ход до отрисовки: закрытие окна не теряет прогресс.
         if (onTurn) onTurn(turn);
         ui_.showEvents(events, logRng);
-        ui_.message("[Ход " + std::to_string(turn) + "] Уборка завершена. Состояние строёв:");
+        ui_.message("Уборка завершена. Состояние строёв:");
         ui_.setBattleProgress(turn, mode);
         ui_.showArmies(a, b);
     }

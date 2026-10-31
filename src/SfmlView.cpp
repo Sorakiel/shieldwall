@@ -1,5 +1,7 @@
 #include "SfmlView.h"
 #include "TextInput.h"
+#include "BattleLog.h"
+#include "EquipmentGlyphs.h"
 #include <SFML/Graphics.hpp>
 #include <algorithm>
 #include <deque>
@@ -60,7 +62,7 @@ struct SfmlView::Impl {
     bool recruiting = false;
     int handoffTeam = -1;
     ViewStage stage = ViewStage::Setup;
-    std::deque<sf::String> log;
+    battletext::Log log;
     std::vector<Button> buttons;
     std::vector<MenuChoice> choices;
     std::array<std::size_t, 2> unitOffsets{};
@@ -113,16 +115,43 @@ struct SfmlView::Impl {
         window.draw(shape);
     }
 
-    void text(const sf::String& value, float x, float y, unsigned size = 16,
-              sf::Color color = foreground) {
-        sf::Text label(font, value, size);
-        label.setPosition({x, y});
-        label.setFillColor(color);
-        window.draw(label);
+    float plainWidth(const sf::String& value, unsigned size) const {
+        const sf::Text label(font, value, size);
+        const auto bounds = label.getLocalBounds();
+        return std::max(label.findCharacterPos(value.getSize()).x, bounds.position.x + bounds.size.x);
     }
 
     float textWidth(const sf::String& value, unsigned size) const {
-        return sf::Text(font, value, size).getLocalBounds().size.x;
+        float width = 0.f;
+        sf::String run;
+        for (const auto point : value) {
+            if (equipmentGlyph(point)) {
+                width += plainWidth(run, size) + static_cast<float>(size) + 3.f;
+                run.clear();
+            } else run += point;
+        }
+        return width + plainWidth(run, size);
+    }
+
+    void text(const sf::String& value, float x, float y, unsigned size = 16,
+              sf::Color color = foreground) {
+        sf::String run;
+        auto flush = [&] {
+            sf::Text label(font, run, size);
+            label.setPosition({x, y});
+            label.setFillColor(color);
+            window.draw(label);
+            x += plainWidth(run, size);
+            run.clear();
+        };
+        for (const auto point : value) {
+            if (equipmentGlyph(point)) {
+                flush();
+                drawEquipmentGlyph(window, point, x, y + 3.f, static_cast<float>(size), color);
+                x += static_cast<float>(size) + 3.f;
+            } else run += point;
+        }
+        flush();
     }
 
     sf::String elide(sf::String value, float width, unsigned size) const {
@@ -151,37 +180,26 @@ struct SfmlView::Impl {
             [value](const MenuChoice& choice) { return choice.enabled && choice.value == value; });
     }
 
-    void appendLog(const std::string& value) {
-        const sf::String full = utf8(value);
-        sf::String line;
-        auto flush = [&] {
-            log.push_back(line);
-            if (logOffset > 0) ++logOffset;
-            if (log.size() > 5000) log.pop_front();
-            line.clear();
-        };
-        for (const auto character : full) {
-            if (character == U'\r') continue;
-            if (character == U'\n') { flush(); continue; }
-            line += character;
-            if (textWidth(line, logFontSize) > 324.f) {
-                std::size_t split = line.getSize() - 1;
-                while (split > 0 && line[split] != U' ') --split;
-                if (split == 0) split = line.getSize() - 1;
-                const bool space = line[split] == U' ';
-                const sf::String rest = line.substring(split + (space ? 1 : 0));
-                line = line.substring(0, split);
-                flush();
-                line = rest;
-            }
-        }
-        if (!line.isEmpty()) flush();
+    void appendLog(const std::string& value, int team = -1) {
+        const auto full = utf8(battletext::icons(value)).toUtf32();
+        const auto added = log.append(full, team, [&](const std::u32string& line) {
+            return textWidth(sf::String(line), logFontSize);
+        }, 324.f);
+        if (logOffset > 0) logOffset += static_cast<int>(added);
         clampLogOffset();
+    }
+
+    void battleMessage(int eventTurn, int team, const std::string& value) {
+        const auto added = log.startTurn(eventTurn, [&](const std::u32string& line) {
+            return textWidth(sf::String(line), logFontSize);
+        }, 324.f);
+        if (logOffset > 0) logOffset += static_cast<int>(added);
+        appendLog(value, team);
     }
 
     void clampLogOffset() {
         logOffset = std::clamp(logOffset, 0,
-            std::max(0, static_cast<int>(log.size()) - visibleLogLines));
+            std::max(0, static_cast<int>(log.lines.size()) - visibleLogLines));
     }
 
     void shiftUnits(int team, int direction) {
@@ -249,13 +267,18 @@ struct SfmlView::Impl {
             rectangle(x, top, 140.f, 120.f, raised, color);
             rectangle(x + 1.f, top + 1.f, 138.f, 27.f, kindColor(unit.kind));
             text(utf8(unitKindName(unit.kind)), x + 10.f, top + 3.f, 14, background);
-            text(elide(utf8(unit.name), 118.f, 16), x + 10.f, top + 35.f, 16);
+            const auto label = battletext::unitLabel(unit.name);
+            text(elide(utf8(label.first), 118.f, 16), x + 10.f, top + 32.f, 16);
+            const auto badges = utf8(label.second);
+            unsigned badgeSize = 18;
+            while (badgeSize > 1 && textWidth(badges, badgeSize) > 118.f) --badgeSize;
+            text(badges, x + 10.f, top + 55.f, badgeSize, accent);
             text(utf8(std::to_string(unit.hp) + " / " + std::to_string(unit.maxHp) + " HP"),
-                 x + 10.f, top + 65.f, 14, muted);
+                 x + 10.f, top + 79.f, 12, muted);
             const float health = unit.maxHp > 0 ?
                 std::clamp(static_cast<float>(unit.hp) / static_cast<float>(unit.maxHp), 0.f, 1.f) : 0.f;
-            rectangle(x + 10.f, top + 98.f, 120.f, 8.f, background);
-            rectangle(x + 10.f, top + 98.f, 120.f * health, 8.f, health > .3f ? accent : red);
+            rectangle(x + 10.f, top + 108.f, 120.f, 8.f, background);
+            rectangle(x + 10.f, top + 108.f, 120.f * health, 8.f, health > .3f ? accent : red);
         }
         text(utf8("Позиции " + std::to_string(offset + 1) + "–" +
                   std::to_string(std::min(army.units.size(), offset + visibleUnits)) +
@@ -268,18 +291,18 @@ struct SfmlView::Impl {
         text(utf8("События и результаты ходов"), 904.f, 173.f, 13, muted);
         rectangle(904.f, 204.f, 328.f, 1.f, raised);
         clampLogOffset();
-        const int end = static_cast<int>(log.size()) - logOffset;
+        const int end = static_cast<int>(log.lines.size()) - logOffset;
         const int first = std::max(0, end - visibleLogLines);
         float y = 220.f;
-        if (log.empty()) text(utf8("Здесь появятся события боя"), 904.f, y, 14, muted);
+        if (log.lines.empty()) text(utf8("Здесь появятся события боя"), 904.f, y, 14, muted);
         for (int index = first; index < end; ++index, y += 22.f) {
-            const auto& line = log[static_cast<std::size_t>(index)];
+            const auto& line = log.lines[static_cast<std::size_t>(index)];
             sf::Color color = foreground;
-            if (line.find(utf8("[Синие]")) != sf::String::InvalidPos) color = blue;
-            else if (line.find(utf8("[Красные]")) != sf::String::InvalidPos) color = red;
-            text(line, 904.f, y, logFontSize, color);
+            if (line.team == 0) color = blue;
+            else if (line.team == 1) color = red;
+            text(sf::String(line.text), 904.f, y, logFontSize, color);
         }
-        const int count = static_cast<int>(log.size());
+        const int count = static_cast<int>(log.lines.size());
         if (count > visibleLogLines) {
             rectangle(1242.f, 220.f, 3.f, 506.f, raised);
             const float thumb = std::max(24.f, 506.f * visibleLogLines / static_cast<float>(count));
@@ -365,7 +388,13 @@ struct SfmlView::Impl {
                 rectangle(x, 628.f, 12.f, 12.f, kindColor(kinds[i]));
                 text(utf8(unitKindName(kinds[i])), x + 20.f, 622.f, 14, muted);
             }
-            text(utf8("Рамка — команда, цвет шапки — тип бойца."), 48.f, 650.f, 12, muted);
+            text(utf8("Рамка — команда, шапка — тип."), 48.f, 650.f, 12, muted);
+            float badgeX = 330.f;
+            for (const auto& item : battletext::equipment) {
+                text(utf8(item.second), badgeX, 648.f, 15, accent);
+                text(utf8(item.first), badgeX + 22.f, 650.f, 12, muted);
+                badgeX += 118.f;
+            }
         }
         drawLog();
 
@@ -640,6 +669,10 @@ std::optional<std::uint32_t> SfmlView::choose(const std::vector<MenuChoice>& cho
 }
 
 void SfmlView::message(const std::string& text) { impl_->appendLog(text); }
+
+void SfmlView::battleMessage(int turn, int team, const std::string& text) {
+    impl_->battleMessage(turn, team, text);
+}
 
 void SfmlView::showArmies(const BattleSnapshot& snapshot) {
     impl_->snapshot = snapshot;
