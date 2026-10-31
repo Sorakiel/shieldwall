@@ -10,6 +10,7 @@
 #include "EventFormatter.h"
 #include "Menu.h"
 #include "ConsoleUI.h"
+#include "BattlePlayback.h"
 
 namespace {
 
@@ -226,6 +227,53 @@ namespace {
         CHECK(rng() == expectedRng());
     }
 
+    void testLiveStatisticsFollowCombat() {
+        RecordingView view;
+        ConsoleUI ui(view);
+        Army a, b;
+        a.add(std::make_unique<HeavyUnit>("Брон", 10000, 17, 12, 30));
+        a.add(std::make_unique<LightUnit>("Мирн", 10000, 7, 1, 10));
+        b.add(std::make_unique<HeavyUnit>("Вейн", 10000, 1, 5, 30));
+        BattleEngine engine(a, b, 42);
+        presentation::Playback playback;
+        int buffs = 0;
+        for (int turn = 0; turn < 64; ++turn) {
+            ui.showArmies(a, b);
+            auto animated = view.frames.back();
+            const auto events = engine.nextTurn();
+            for (const auto& event : events) {
+                const auto step = playback.begin(animated, event);
+                playback.commit(animated, step);
+                if (event.type == EventType::Buff) ++buffs;
+            }
+            ui.showArmies(a, b);
+            const auto& actual = view.frames.back();
+            for (int team = 0; team < 2; ++team) {
+                Army& army = team == 0 ? a : b;
+                CHECK(animated.armies[team].units.size() == army.size());
+                for (std::size_t i = 0; i < army.size(); ++i) {
+                    const auto& unit = animated.armies[team].units[i];
+                    const auto& refreshed = actual.armies[team].units[i];
+                    CHECK(unit.attack == army.at(i)->meleeAttack());
+                    CHECK(unit.defense == army.at(i)->defense());
+                    CHECK(unit.attack == refreshed.attack && unit.defense == refreshed.defense);
+                    CHECK(unit.name == refreshed.name);
+                }
+            }
+        }
+        CHECK(buffs == 4);
+        CHECK(view.frames.back().armies[0].units[0].attack == 23);
+        CHECK(view.frames.back().armies[0].units[0].defense == 18);
+        Army archers, enemy;
+        archers.add(std::make_unique<Archer>("Дарр", 33, 6, 27, 5, 4, 18));
+        ui.showArmies(archers, enemy);
+        const auto& shot = view.frames.back().armies[0].units[0];
+        CHECK(shot.attack == 6 && shot.defense == 4 && shot.rangedAttack == 27);
+        const auto lightAbility = specialActionDescription(UnitKind::Light, 0, 0);
+        CHECK(contains(lightAbility, "Снаряжение") && contains(lightAbility, "25%"));
+        CHECK(contains(lightAbility, "тяжёлому соседу") && contains(lightAbility, "на армию за ход"));
+    }
+
     void testClosingViewStopsRunnerAtTurnBoundary() {
         const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
         ArmyGenerator generator(catalog);
@@ -275,6 +323,7 @@ int main() {
     testMenu();
     testRunnerUsesEngineAndLeavesInputAlone();
     testViewOwnsSnapshotsAndReceivesFormattedEvents();
+    testLiveStatisticsFollowCombat();
     testClosingViewStopsRunnerAtTurnBoundary();
     testMenuSendsExplicitStagesToView();
     std::cout << (failures == 0 ? "All UI tests passed\n" : "UI tests failed\n");

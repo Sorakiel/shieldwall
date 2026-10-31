@@ -56,7 +56,7 @@ add_executable(console_layout_tests ConsoleLayoutTests.cpp
 target_include_directories(console_layout_tests PRIVATE "${Root}/include")
 
 add_executable(battle_playback_tests BattlePlaybackTests.cpp)
-target_include_directories(battle_playback_tests PRIVATE "${Root}/include")
+target_link_libraries(battle_playback_tests PRIVATE test_support)
 
 add_executable(flow_tests FlowTests.cpp
     "${Root}/src/ConsoleUI.cpp" "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp"

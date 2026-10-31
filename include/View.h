@@ -32,6 +32,9 @@ struct UnitSnapshot {
     int hp;
     int maxHp;
     int cost;
+    int attack = 0;
+    int defense = 0;
+    int rangedAttack = 0;
 };
 
 struct ArmySnapshot {

@@ -505,13 +505,20 @@ void Scene::recruitment(const State& s) {
             box(x, 214, w, 320, panel, 14, o.enabled ? border : alpha(border, .5f));
             label(unitKindName(o.kind), x + 18, 228, 29, paper, true);
             label(moneyCount(static_cast<std::size_t>(o.cost)), x + 18, 268, 12, gold);
-            warrior(o.kind, x + w - 53, 290, 68, typeColor(o.kind), false, o.enabled ? 1.f : .4f);
-            label("HP " + std::to_string(o.hp) + "   АТК " + std::to_string(o.melee) + "   ЗЩТ " +
-                      std::to_string(o.defense),
-                  x + 18, 363, 12, muted);
+            warrior(o.kind, x + w - 44, 250, 42, typeColor(o.kind), false, o.enabled ? 1.f : .4f);
+            box(x + 14, 304, w - 28, 82, raised, 8);
+            const std::pair<const char*, int> stats[] = {
+                {"Здоровье", o.hp}, {"Атака", o.melee}, {"Защита", o.defense}};
+            for (int row = 0; row < 3; ++row) {
+                const float y = 310.f + row * 24.f;
+                label(stats[row].first, x + 24, y, 14, paper);
+                const auto value = fit(std::to_string(stats[row].second), w - 130, 16);
+                text(value, x + w - 24 - textWidth(value, 16), y - 1, 16, gold);
+            }
+            label("УМЕНИЕ", x + 18, 400, 10, muted);
             auto desc = specialActionDescription(o.kind, o.ranged, o.range);
             std::replace(desc.begin(), desc.end(), '|', '\n');
-            paragraph(desc, x + 18, 390, w - 36, 12, typeColor(o.kind), 4);
+            paragraph(desc, x + 18, 418, w - 36, 11, typeColor(o.kind), 3);
             const std::uint32_t id = o.kind == UnitKind::Light    ? 1
                                      : o.kind == UnitKind::Heavy  ? 2
                                      : o.kind == UnitKind::Archer ? 3
@@ -521,7 +528,7 @@ void Scene::recruitment(const State& s) {
                 return c.value == id && c.label.rfind("Купить:", 0) == 0;
             });
             if (choice != s.choices.end())
-                button("Нанять", x + 18, 473, w - 36, static_cast<int>(id), choice->enabled, false, 44);
+                button("Нанять", x + 18, 482, w - 36, static_cast<int>(id), choice->enabled, false, 40);
         }
         actions(s, 50, 800, 1340, 4);
     }
@@ -658,26 +665,36 @@ void Scene::army(const State& s, int team) {
         label(unitKindName(u.kind), x + 8, 331, 10, typeColor(u.kind));
         disc(x + 42, 288, 11, i == 0 ? color : raised);
         label(std::to_string(i + 1), x + 38, 280, 10, i == 0 ? ink : muted);
-        warrior(u.kind, x + 42, 365, 65, typeColor(u.kind), team == 1, opacity);
+        warrior(u.kind, x + 42, 351, 58, typeColor(u.kind), team == 1, opacity);
         const auto name = battletext::unitLabel(u.name);
-        text(fit(name.first, 70, 13), x + 7, 451, 13, paper);
+        text(fit(name.first, 70, 13), x + 7, 421, 13, paper);
         auto badges = u8(name.second);
         unsigned badgeSize = 13;
         while (badgeSize > 1 && textWidth(badges, badgeSize) > 70)
             --badgeSize;
-        text(badges, x + 7, 477, badgeSize, gold);
-        label(std::to_string(std::max(0, u.hp)) + " / " + std::to_string(u.maxHp), x + 8, 505, 10, muted);
-        box(x + 8, 534, 68, 5, ink, 2);
+        text(badges, x + 7, 442, badgeSize, gold);
+        const auto statColor =
+            target && s.effect && s.effect->event.type == EventType::Buff && s.effect->committed ? gold
+                                                                                                 : paper;
+        text(fit("Атака " + std::to_string(u.attack), 68, 11), x + 8, 462, 11, statColor);
+        text(fit("Защита " + std::to_string(u.defense), 68, 11), x + 8, 480, 11, statColor);
+        if (u.kind == UnitKind::Archer)
+            text(fit("Выстрел " + std::to_string(u.rangedAttack), 68, 10), x + 8, 500, 10, typeColor(u.kind));
+        label(std::to_string(std::max(0, u.hp)) + " / " + std::to_string(u.maxHp), x + 8, 522, 10, muted);
+        box(x + 8, 542, 68, 5, ink, 2);
         const float ratio = u.maxHp > 0 ? std::clamp(static_cast<float>(u.hp) / u.maxHp, 0.f, 1.f) : 0;
         if (ratio > 0)
-            box(x + 8, 534, 68 * ratio, 5, ratio > .3f ? color : red, 2);
+            box(x + 8, 542, 68 * ratio, 5, ratio > .3f ? color : red, 2);
         if (sf::FloatRect({x, 297}, {84, 264}).contains(mouse_) && !s.playing) {
             const float tx = std::clamp(x - 40, 48.f, 760.f);
-            box(tx, 577, 274, 68, raised, 9, gold);
+            box(tx, 573, 312, 79, raised, 9, gold);
             text(fit(battletext::icons(u.name), 250, 14), tx + 12, 586, 14, paper);
-            label(std::string(unitKindName(u.kind)) + " · HP " + std::to_string(u.hp) + "/" +
-                      std::to_string(u.maxHp),
-                  tx + 12, 615, 12, muted);
+            text(fit("Здоровье " + std::to_string(u.hp) + "/" + std::to_string(u.maxHp), 288, 12), tx + 12,
+                 608, 12, muted);
+            text(fit("Атака " + std::to_string(u.attack) + " · Защита " + std::to_string(u.defense) +
+                         (u.kind == UnitKind::Archer ? " · Выстрел " + std::to_string(u.rangedAttack) : ""),
+                     288, 12),
+                 tx + 12, 628, 12, paper);
         }
     }
     button("<", left, 660, 36, 200 + team * 2, offset > 0 && !s.playing, false, 32);

@@ -30,6 +30,7 @@ const char* unitKindName(UnitKind kind) {
 std::string specialActionDescription(UnitKind kind, int power, int range) {
     switch (kind) {
     case UnitKind::Light:
+        return "Снаряжение: шанс 25% | тяжёлому соседу | 1 бонус на армию за ход";
     case UnitKind::Heavy: return "Ближний бой";
     case UnitKind::Archer:
         return "Выстрел " + std::to_string(power) + " | дальность " + std::to_string(range);

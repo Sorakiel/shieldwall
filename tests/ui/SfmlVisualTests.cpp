@@ -92,12 +92,14 @@ int main(int argc, char** argv) {
         const UnitKind kinds[] = {UnitKind::Heavy, UnitKind::Light, UnitKind::Archer, UnitKind::Mage,
                                   UnitKind::Healer};
         const char* names[] = {"Брон [конь] [щит] [шлем] [копьё]", "Мирн", "Дарр", "Зэн", "Тиль"};
+        const int health[] = {45, 20, 16, 14, 18}, costs[] = {30, 10, 18, 25, 22};
+        const int attack[] = {15, 7, 4, 2, 2}, defense[] = {11, 1, 0, 0, 0};
         for (int team = 0; team < 2; ++team) {
             s.battle.armies[team].name = team == 0 ? "Синие" : "Красные";
             s.battle.armies[team].totalCost = 105;
             for (int i = 0; i < 5; ++i)
-                s.battle.armies[team].units.push_back(
-                    {kinds[i], names[i], i == 0 ? 31 : 20, i == 0 ? 45 : 20, 20});
+                s.battle.armies[team].units.push_back({kinds[i], names[i], i == 0 ? 31 : health[i], health[i],
+                                                       costs[i], attack[i], defense[i], i == 2 ? 11 : 0});
         }
         s.recruitment.armies = s.battle.armies;
         s.recruitment.offers = {{UnitKind::Light, 10, 20, 7, 0, 0, 1, true},
@@ -243,6 +245,22 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Playback controls are disabled");
             }
         }
+        State equipped = battleState;
+        equipped.battle.armies[0].units[0].name = "Брон";
+        equipped.battle.armies[0].units[0].attack = 9;
+        equipped.battle.armies[0].units[0].defense = 5;
+        presentation::Playback equipment;
+        for (const auto kind : {BuffKind::Helmet, BuffKind::Shield, BuffKind::Spear, BuffKind::Horse}) {
+            BattleEvent event{EventType::Buff, 17, 0, "Мирн", equipped.battle.armies[0].units[0].name};
+            event.buff = buffName(kind);
+            equipped.effect = equipment.begin(equipped.battle, event);
+            equipped.playing = true;
+            equipped.effect->advance(presentation::duration(event.type) * .49f);
+            render("28-before-" + event.buff, equipped);
+            if (equipped.effect->advance(presentation::duration(event.type) * .02f))
+                equipment.commit(equipped.battle, *equipped.effect);
+            render("29-after-" + event.buff, equipped);
+        }
         s.stage = ViewStage::Result;
         s.waiting = false;
         s.winner = 0;
@@ -302,6 +320,10 @@ int main(int argc, char** argv) {
             movie.log.clear();
             movie.battle.armies[0].units[0].name = "Брон";
             movie.battle.armies[1].units[0].name = "Хорд";
+            for (auto& army : movie.battle.armies) {
+                army.units[0].attack = 9;
+                army.units[0].defense = 5;
+            }
             movie.playing = true;
             movie.waiting = false;
             presentation::Playback sequence;
