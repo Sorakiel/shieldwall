@@ -3,6 +3,7 @@
 #include <deque>
 #include <limits>
 #include <set>
+#include <map>
 #include <sstream>
 #include <string>
 #include "ArmyGenerator.h"
@@ -11,6 +12,7 @@
 #include "Menu.h"
 #include "ConsoleUI.h"
 #include "BattlePlayback.h"
+#include "Mage.h"
 
 namespace {
 
@@ -274,6 +276,86 @@ namespace {
         CHECK(contains(lightAbility, "тяжёлому соседу") && contains(lightAbility, "на армию за ход"));
     }
 
+    void testCloneLabelsInEventsAndSnapshots() {
+        RecordingView view;
+        ConsoleUI ui(view);
+        Army a, b;
+        a.add(std::make_unique<Archer>("Дарр", 1000, 1, 1, 10, 50, 18));
+        a.add(std::make_unique<Mage>("Зэн", 1000, 1, 100, 1, 50, 25));
+        b.add(std::make_unique<HeavyUnit>("Вейн", 1000, 1, 50, 30));
+        BattleEngine engine(a, b, 42);
+        std::mt19937 rng(42);
+        ui.setStage(ViewStage::Battle);
+        ui.showArmies(a, b);
+        for (int turn = 1; turn <= 2; ++turn) {
+            ui.showEvents(engine.nextTurn(), rng);
+            ui.showArmies(a, b);
+            const auto& army = view.frames.back().armies[0];
+            CHECK(army.clonesCreated == static_cast<std::size_t>(turn));
+            CHECK(army.units[turn].cloneNumber == static_cast<std::size_t>(turn));
+            CHECK(unitDisplayName(army.units[turn]) == "Дарр [Клон " + std::to_string(turn) + "]");
+        }
+        CHECK(std::any_of(view.messages.begin(), view.messages.end(), [](const std::string& text) {
+            return contains(text, "[Клон 1]") && contains(text, "стрел");
+        })); // the created archer later acts under its label
+        ui.setStage(ViewStage::MainMenu);
+        ui.setStage(ViewStage::Battle);
+        Army freshA, freshB;
+        freshA.add(std::make_unique<LightUnit>("Новый", 20, 7, 1, 10));
+        freshA.add(std::make_unique<Mage>("Маг", 100, 1, 100, 1, 5, 25));
+        freshB.add(std::make_unique<HeavyUnit>("Враг", 100, 1, 5, 30));
+        ui.showArmies(freshA, freshB);
+        CHECK(view.frames.back().armies[0].clonesCreated == 0);
+        for (const auto& unit : view.frames.back().armies[0].units) CHECK(unit.cloneNumber == 0);
+    }
+
+    void testCloneIdentityWithDuplicateNames() {
+        for (unsigned seed = 1; seed <= 6; ++seed) {
+            RecordingView view;
+            ConsoleUI ui(view);
+            Army a, b;
+            std::set<const Unit*> originals;
+            std::map<const Unit*, std::size_t> retained;
+            for (auto* army : {&a, &b}) {
+                army->add(std::make_unique<HeavyUnit>("Страж", 400, 2, 9, 30));
+                army->add(std::make_unique<Archer>("Дарр", 16, 4, 11, 10, 0, 18));
+                army->add(std::make_unique<LightUnit>("Дарр", 20, 7, 1, 10));
+                army->add(std::make_unique<Mage>("Зэн", 200, 2, 100, 3, 0, 25));
+                for (std::size_t i = 0; i < army->size(); ++i)
+                    if (army->at(i)->kind() == UnitKind::Light || army->at(i)->kind() == UnitKind::Archer)
+                        originals.insert(army->at(i));
+            }
+            BattleEngine engine(a, b, seed);
+            std::mt19937 phrases(0);
+            ui.showArmies(a, b);
+            for (int turn = 0; turn < 16 && !engine.finished(); ++turn) {
+                ui.showEvents(engine.nextTurn(), phrases);
+                ui.showArmies(a, b);
+                const auto& frame = view.frames.back();
+                std::set<const Unit*> live;
+                std::map<const Unit*, std::size_t> nextRetained;
+                for (int team = 0; team < 2; ++team) {
+                    Army& army = team == 0 ? a : b;
+                    std::set<std::size_t> numbers;
+                    for (std::size_t i = 0; i < army.size(); ++i) {
+                        const Unit* unit = army.at(i);
+                        live.insert(unit);
+                        const auto number = frame.armies[team].units[i].cloneNumber;
+                        if (unit->kind() == UnitKind::Light || unit->kind() == UnitKind::Archer) {
+                            CHECK((number == 0) == (originals.count(unit) != 0));
+                            if (number) CHECK(numbers.insert(number).second);
+                            if (retained.count(unit)) CHECK(retained.at(unit) == number);
+                            nextRetained[unit] = number;
+                        }
+                    }
+                }
+                for (auto i = originals.begin(); i != originals.end();)
+                    if (!live.count(*i)) i = originals.erase(i); else ++i;
+                retained = std::move(nextRetained);
+            }
+        }
+    }
+
     void testClosingViewStopsRunnerAtTurnBoundary() {
         const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
         ArmyGenerator generator(catalog);
@@ -324,6 +406,8 @@ int main() {
     testRunnerUsesEngineAndLeavesInputAlone();
     testViewOwnsSnapshotsAndReceivesFormattedEvents();
     testLiveStatisticsFollowCombat();
+    testCloneLabelsInEventsAndSnapshots();
+    testCloneIdentityWithDuplicateNames();
     testClosingViewStopsRunnerAtTurnBoundary();
     testMenuSendsExplicitStagesToView();
     std::cout << (failures == 0 ? "All UI tests passed\n" : "UI tests failed\n");

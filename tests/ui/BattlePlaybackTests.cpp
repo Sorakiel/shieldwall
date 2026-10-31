@@ -87,7 +87,7 @@ void testEffectsChangeOnlySnapshots() {
     CHECK(s.armies[0].units.size() == 5);
     playback.commit(s, step);
     CHECK(s.armies[0].units.size() == 6);
-    CHECK(s.armies[0].units[3].kind == UnitKind::Archer && s.armies[0].units[3].name == "Дарр");
+    CHECK(s.armies[0].units[3].kind == UnitKind::Archer && s.armies[0].units[3].name == "Дарр [Клон 1]");
     CHECK(s.armies[0].units[3].hp == 16);
     CHECK(s.armies[0].units[3].attack == 4 && s.armies[0].units[3].rangedAttack == 11);
     CHECK(s.armies[0].units[4].kind == UnitKind::Mage);
@@ -148,6 +148,30 @@ void testEquipmentStatsAtImpact() {
     }
     CHECK(heavy.attack == 23 && heavy.defense == 18);
 }
+void testTeamCloneNumbers() {
+    auto s = frame();
+    s.armies[1].units.push_back({UnitKind::Mage, "Орн-маг", 14, 14, 25, 2, 0});
+    presentation::Playback playback;
+    auto first = playback.begin(s, {EventType::Clone, 1, 0, "Зэн", "Дарр"});
+    playback.commit(s, first);
+    CHECK(s.armies[0].units[3].cloneNumber == 1);
+    CHECK(s.armies[0].units[2].cloneNumber == 0);
+    auto second = playback.begin(s, {EventType::Clone, 2, 0, "Зэн", "Дарр"});
+    second.target.index = 3; // clone an existing clone
+    playback.commit(s, second);
+    CHECK(s.armies[0].units[3].cloneNumber == 1 && s.armies[0].units[4].cloneNumber == 2);
+    playback.commit(s, playback.begin(s, {EventType::Clone, 2, 1, "Орн-маг", "Орн"}));
+    CHECK(s.armies[1].units[2].cloneNumber == 1);
+    CHECK(s.armies[0].clonesCreated == 2 && s.armies[1].clonesCreated == 1);
+    playback.commit(s, playback.begin(s, {EventType::CloneFailed, 3, 0, "Зэн", "Дарр"}));
+    CHECK(s.armies[0].clonesCreated == 2);
+    s.armies[0].units[4].hp = 0;
+    playback.begin(s, {EventType::Promote, 3, 0, "Брон"});
+    playback.commit(s, playback.begin(s, {EventType::Clone, 4, 0, "Зэн", "Дарр"}));
+    CHECK(s.armies[0].units[4].cloneNumber == 3);
+    CHECK(s.armies[0].clonesCreated == 3);
+    CHECK(s.armies[0].units[3].cloneNumber == 1);
+}
 void testDuplicateNamesAndReplayBoundary() {
     auto s = frame();
     presentation::Playback playback;
@@ -186,6 +210,7 @@ int main() {
     testTimingAndJournal();
     testEffectsChangeOnlySnapshots();
     testEquipmentStatsAtImpact();
+    testTeamCloneNumbers();
     testDuplicateNamesAndReplayBoundary();
     std::cout << (failures ? "Presentation tests failed\n" : "Presentation tests passed\n");
     return failures ? 1 : 0;

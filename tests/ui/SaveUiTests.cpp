@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <set>
 #include "ArmyGenerator.h"
 #include "BattleReplay.h"
 #include "BattleRunner.h"
@@ -54,6 +55,7 @@ public:
     std::vector<std::string> messages, visibleMessages;
     std::vector<int> progress;
     std::vector<BattleMode> modes;
+    std::vector<BattleSnapshot> frames;
     std::function<void()> beforeText, afterText, beforeChoice;
     ViewStage stage = ViewStage::MainMenu;
     void setStage(ViewStage value) override { stage = value; }
@@ -107,7 +109,7 @@ public:
         const auto action = turns.front(); turns.pop_front(); return action;
     }
     void message(const std::string& text) override { messages.push_back(text); visibleMessages.push_back(text); }
-    void showArmies(const BattleSnapshot&) override { displayedArmy = true; }
+    void showArmies(const BattleSnapshot& frame) override { displayedArmy = true; frames.push_back(frame); }
     bool hasMessage(const std::string& part) const {
         for (const auto& text : messages) if (text.find(part) != std::string::npos) return true;
         return false;
@@ -185,6 +187,48 @@ void testNamedSaveDuringBattle(const UnitCatalog& catalog) {
             CHECK(contents(dir.named(name)) == savedContents);
         }
     }
+}
+
+void testCloneLabelsAfterLoading(const UnitCatalog& catalog) {
+    SaveDirectory dir;
+    SaveData saved;
+    saved.costLimit = 200; saved.seed = 42; saved.turn = 3;
+    saved.armyA = {{{UnitKind::Heavy, 1000, 1, 0, 0, 50, 30}, "Страж"},
+                   {{UnitKind::Archer, 1000, 1, 1, 10, 50, 18}, "Дарр"},
+                   {{UnitKind::Mage, 1000, 1, 100, 1, 50, 25}, "Зэн"},
+                   {{UnitKind::Mage, 1000, 1, 100, 3, 50, 25}, "Тиль"}};
+    saved.armyB = saved.armyA;
+    SaveService::saveToFile(saved, dir.autosave());
+    ScriptView view;
+    view.actions = {2, 1, 2, 0};
+    view.turns = {TurnAction::Next, TurnAction::Exit};
+    run(view, catalog, dir);
+    CHECK(view.frames.size() == 2 && view.actions.empty());
+    if (view.frames.size() != 2) return;
+    for (int team = 0; team < 2; ++team) {
+        CHECK(view.frames[0].armies[team].clonesCreated == 6);
+        CHECK(view.frames[1].armies[team].clonesCreated == 8);
+        for (const auto& frame : view.frames) {
+            std::set<std::size_t> numbers;
+            int originals = 0;
+            for (const auto& unit : frame.armies[team].units) {
+                if (unit.cloneNumber) CHECK(numbers.insert(unit.cloneNumber).second);
+                else ++originals;
+                CHECK(unitDisplayName(unit) == unit.name); // the marker is part of the actual clone name
+            }
+            CHECK(originals == 4 && numbers.size() == frame.armies[team].clonesCreated);
+            CHECK(!numbers.empty() && *numbers.begin() == 1);
+            CHECK(*numbers.rbegin() == frame.armies[team].clonesCreated);
+        }
+    }
+    CHECK(view.hasMessage("Создан «Клон 7»") && view.hasMessage("Создан «Клон 8»"));
+    ScriptView again;
+    again.actions = {2, 1, 2, 0};
+    again.turns = {TurnAction::Exit};
+    run(again, catalog, dir);
+    CHECK(again.frames.size() == 1);
+    if (!again.frames.empty())
+        CHECK(again.frames[0].armies[0].clonesCreated == 8 && again.frames[0].armies[1].clonesCreated == 8);
 }
 
 void testRunnerWithoutSaveCallback(const UnitCatalog& catalog) {
@@ -594,6 +638,7 @@ int main() {
     try {
         const auto catalog = UnitCatalog::loadFromFile("data/units.txt");
         testNamedSaveDuringBattle(catalog);
+        testCloneLabelsAfterLoading(catalog);
         testRunnerWithoutSaveCallback(catalog);
         testBattleSaveDefaultRetryAndCancel(catalog);
         testOverwrite(catalog);

@@ -80,7 +80,7 @@ void testMage() {
         if (r.success) {
             ++successes;
             CHECK(b.size() == 4);
-            CHECK(b.at(1)->name() == "Первый" && b.at(2)->kind() == UnitKind::Mage);   // копия перед магом
+            CHECK(b.at(1)->name() == "Первый [Клон 1]" && b.at(2)->kind() == UnitKind::Mage);   // копия перед магом
         } else {
             CHECK(b.size() == 3);
         }

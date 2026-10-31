@@ -145,6 +145,17 @@ void testArmies() {
     CHECK(output.str().find("\n\n\n") == std::string::npos);
 }
 
+void testCloneNames() {
+    BattleSnapshot frame;
+    frame.armies[0].name = "Синие";
+    frame.armies[0].units = {{UnitKind::Light, "Мирн", 20, 20, 10, 7, 1, 0, 12}};
+    std::istringstream input;
+    std::ostringstream output;
+    ConsoleView view(input, output);
+    view.showArmies(frame);
+    CHECK(output.str().find("Мирн [Клон 12]") != std::string::npos);
+    CHECK(frame.armies[0].units[0].name == "Мирн");
+}
 void testSaves() {
     std::istringstream input("2\n1\n5\n");
     std::ostringstream output;
@@ -313,6 +324,7 @@ int main() {
     testEquipmentLabels();
     testRecruitment();
     testArmies();
+    testCloneNames();
     testSaves();
     testWideAndCombiningNames();
     std::cout << (failures ? "Console layout tests failed\n" : "Console layout tests passed\n");

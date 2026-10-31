@@ -261,6 +261,23 @@ int main(int argc, char** argv) {
                 equipment.commit(equipped.battle, *equipped.effect);
             render("29-after-" + event.buff, equipped);
         }
+        State clones = battleState;
+        for (auto& army : clones.battle.armies) {
+            army.clonesCreated = 2;
+            army.units[1].cloneNumber = 1;
+            army.units[2].cloneNumber = 2;
+        }
+        render("30-clones-both-teams", clones);
+        BattleEvent birth{EventType::Clone, 18, 0, "Зэн", "Дарр"};
+        clones.effect = playback.begin(clones.battle, birth);
+        clones.playing = true;
+        clones.effect->advance(presentation::duration(birth.type) * .51f);
+        playback.commit(clones.battle, *clones.effect);
+        render("31-new-clone-number", clones);
+        if (clones.battle.armies[0].units[3].cloneNumber != 3)
+            throw std::runtime_error("A clone of a clone needs a new team number");
+        clones.battle.armies[0].units[3].cloneNumber = 10000;
+        render("32-large-clone-number", clones);
         s.stage = ViewStage::Result;
         s.waiting = false;
         s.winner = 0;
