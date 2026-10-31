@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "ConsoleView.h"
+#include "BattleLog.h"
 
 namespace {
 int failures = 0;
@@ -179,9 +180,64 @@ void testWideAndCombiningNames() {
     CHECK(blocks[0][2][0] == " 3 — 日本語  ");
     CHECK(blocks[0][3][0] == "    4 — е\xcc\x81    ");
 }
+void testTurnBlocksAndColors() {
+    battletext::Log log;
+    const auto width = [](const std::u32string& s) { return static_cast<float>(s.size()); };
+    CHECK(log.startTurn(17, width, 20.f) == 1);
+    log.append(U"Много слов для длинного синего события с переносами", 0, width, 20.f);
+    CHECK(log.startTurn(17, width, 20.f) == 0);
+    const auto redStart = log.lines.size();
+    log.append(U"Красное событие\nс явным переносом и длинным продолжением", 1, width, 20.f);
+    CHECK(log.lines.front().text == U"Ход 17");
+    for (std::size_t i = 1; i < log.lines.size(); ++i) {
+        CHECK(log.lines[i].team == (i < redStart ? 0 : 1));
+        CHECK(width(log.lines[i].text) <= 20.f);
+    }
+    const auto boundary = log.lines.size();
+    CHECK(log.startTurn(18, width, 20.f) == 2);
+    CHECK(log.lines[boundary].text.empty());
+    CHECK(log.lines[boundary + 1].text == U"Ход 18");
+    CHECK(log.lines[boundary + 1].team == -1);
+    log.append(U"Ничья", -2, width, 20.f);
+    CHECK(log.lines.back().team == -2);
+    log.clear();
+    CHECK(log.lines.empty());
+    CHECK(log.startTurn(18, width, 20.f) == 1);
+    log.append(U"123456789012345678901234567890", 0, width, 20.f);
+    for (const auto& line : log.lines) CHECK(width(line.text) <= 20.f);
+    for (int i = 0; i < 5100; ++i) log.append(U"строка", 1, width, 20.f);
+    CHECK(log.lines.size() == 5000);
+
+    std::istringstream input;
+    std::ostringstream output;
+    ConsoleView view(input, output);
+    view.battleMessage(17, 0, "Синий удар");
+    view.battleMessage(17, 1, "Красный удар");
+    view.battleMessage(18, 0, "Новый ход");
+    CHECK(output.str() == "Ход 17\n[Синие] Синий удар\n[Красные] Красный удар\n\nХод 18\n[Синие] Новый ход\n");
+    CHECK(output.str().find("\033[") == std::string::npos);
+    view.clearDisplay();
+    view.battleMessage(18, -2, "Ничья");
+    CHECK(output.str().find("Ход 18\nНичья\n") != std::string::npos);
+}
+
+void testEquipmentLabels() {
+    const auto label = battletext::unitLabel("Брон [конь] [щит] [шлем] [копьё]");
+    CHECK(label.first == "Брон");
+    CHECK(label.second == "🐎🛡🪖🗡");
+    CHECK(battletext::icons("«Брон [конь] [щит] [шлем] [копьё]»") == "«Брон 🐎 🛡 🪖 🗡»");
+    for (const auto& item : battletext::equipment) {
+        CHECK(battletext::icons("бонус: " + item.first + ".") == "бонус: " + item.second + ".");
+    }
+    const auto custom = battletext::unitLabel("Имя [щит] внутри [неизвестно]");
+    CHECK(custom.first == "Имя [щит] внутри [неизвестно]");
+    CHECK(custom.second.empty());
+}
 }  // namespace
 
 int main() {
+    testTurnBlocksAndColors();
+    testEquipmentLabels();
     testRecruitment();
     testArmies();
     testSaves();

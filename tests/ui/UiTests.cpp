@@ -153,6 +153,8 @@ namespace {
     public:
         std::vector<BattleSnapshot> frames;
         std::vector<std::string> messages;
+        struct EventText { int turn; int team; std::string text; };
+        std::vector<EventText> eventTexts;
         std::vector<ViewStage> stages;
         std::deque<std::uint32_t> numbers;
         std::deque<std::uint32_t> actions;
@@ -173,6 +175,10 @@ namespace {
             return action;
         }
         void message(const std::string& text) override { messages.push_back(text); }
+        void battleMessage(int turn, int team, const std::string& text) override {
+            eventTexts.push_back({turn, team, text});
+            View::battleMessage(turn, team, text);
+        }
         void showArmies(const BattleSnapshot& frame) override {
             frames.push_back(frame);
             if (closeAfterFrame && frames.size() == 2) throw ViewClosed{};
@@ -202,6 +208,12 @@ namespace {
         const auto expected = EventFormatter::format(event, expectedRng);
         ui.showEvents({ event }, rng);
         CHECK(view.messages.back() == expected);
+        CHECK(view.eventTexts.size() == 1);
+        CHECK(view.eventTexts.back().turn == 1);
+        CHECK(view.eventTexts.back().team == 0);
+        CHECK(!contains(view.eventTexts.back().text, "[Ход"));
+        CHECK(!contains(view.eventTexts.back().text, "[Синие]"));
+        CHECK(contains(expected, view.eventTexts.back().text));
         CHECK(rng() == expectedRng());
     }
 
