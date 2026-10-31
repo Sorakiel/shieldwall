@@ -21,6 +21,7 @@ public:
         std::uint32_t min, std::uint32_t max) override;
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override;
     void message(const std::string& text) override;
+    void battleMessage(int turn, int team, const std::string& text) override;
     void showArmies(const BattleSnapshot& snapshot) override;
     void showResult(int winner, const std::string& text) override;
 

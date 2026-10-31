@@ -2,6 +2,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 #include <iostream>
 #include <thread>
 #ifdef _WIN32
@@ -116,6 +121,21 @@ bool interactiveInput(std::istream& input) {
     return &input == &std::cin && isatty(STDIN_FILENO);
 #endif
 }
+bool colorOutput(std::ostream& output) {
+    if (&output != &std::cout) return false;
+#ifdef _WIN32
+    if (GetEnvironmentVariableW(L"NO_COLOR", nullptr, 0) != 0 ||
+        GetLastError() != ERROR_ENVVAR_NOT_FOUND) return false;
+    DWORD mode = 0;
+    const auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    return GetConsoleMode(handle, &mode) && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+    if (std::getenv("NO_COLOR")) return false;
+    const auto term = std::getenv("TERM");
+    return isatty(STDOUT_FILENO) && term && std::string(term) != "dumb";
+#endif
+}
+
 bool inputReady() {
 #ifdef _WIN32
     return _kbhit() != 0;
@@ -143,9 +163,25 @@ std::optional<std::string> ConsoleView::readText(const std::string& prompt, std:
     }
 }
 
+void ConsoleView::battleMessage(int turn, int team, const std::string& text) {
+    if (logTurn_ != turn) {
+        separateBlock();
+        message("Ход " + std::to_string(turn));
+        logTurn_ = turn;
+    }
+    const bool color = colorOutput(out_) && (team == 0 || team == 1);
+    if (color) out_ << (team == 0 ? "\033[94m" : "\033[91m");
+    const auto label = team == 0 ? "[Синие] " : team == 1 ? "[Красные] " : "";
+    // Color every physical line, including explicit newlines in event text.
+    if (color) message(text);
+    else message(std::string(label) + text);
+    if (color) out_ << "\033[0m";
+}
+
 void ConsoleView::clearDisplay() {
     out_ << "\033[2J\033[H\033[3J" << std::flush;
     lastLineBlank_ = true;
+    logTurn_ = -1;
 }
 
 std::optional<std::uint32_t> ConsoleView::readNumberCancelable(const std::string& prompt,

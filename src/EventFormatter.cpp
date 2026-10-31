@@ -9,10 +9,10 @@ const char* EventFormatter::teamName(int team) {
     }
 }
 
-std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng) {
+std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng, bool withPrefix) {
     // Остаток даёт одинаковые варианты фраз на разных стандартных библиотеках.
     const bool alternate = (rng() % 2) != 0;
-    const std::string prefix = "[Ход " + std::to_string(event.turn) + "] [" +
+    const std::string prefix = !withPrefix ? "" : "[Ход " + std::to_string(event.turn) + "] [" +
         teamName(event.team) + "] ";
     const std::string actor = "«" + event.actor + "»";
     const std::string target = "«" + event.target + "»";

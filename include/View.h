@@ -88,6 +88,11 @@ public:
     }
     virtual std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) = 0;
     virtual void message(const std::string& text) = 0;
+    // Team/turn metadata survives wrapping and is independent of translated text.
+    virtual void battleMessage(int turn, int team, const std::string& text) {
+        message("[Ход " + std::to_string(turn) + "] [" +
+            (team == 0 ? "Синие" : team == 1 ? "Красные" : "Без команды") + "] " + text);
+    }
     virtual void showArmies(const BattleSnapshot& snapshot) = 0;
     virtual void showResult(int, const std::string& text) { message(text); }
 };
