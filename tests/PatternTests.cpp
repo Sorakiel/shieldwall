@@ -1,5 +1,6 @@
 // Тесты новых юнитов и паттернов зоны "Армии и данные". Запуск из корня репозитория:
 // cmake -S tests/ui -B build/ui-tests && cmake --build build/ui-tests && ctest --test-dir build/ui-tests
+#include <algorithm>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -183,6 +184,38 @@ void testBuffGiver() {
     CHECK(!never.tryGrant(a, 1, rng).granted);
 }
 
+void testBuffNotRepeated() {
+    UnitCatalog c = loadDefault();
+    auto heavy = decorate(make(c, UnitKind::Heavy, "Гурм"), BuffKind::Helmet);
+    heavy = decorate(std::move(heavy), BuffKind::Spear);
+    CHECK(hasBuff(*heavy, BuffKind::Helmet) && hasBuff(*heavy, BuffKind::Spear));
+    CHECK(!hasBuff(*heavy, BuffKind::Shield) && !hasBuff(*heavy, BuffKind::Horse));
+    CHECK(!hasBuff(*make(c, UnitKind::Heavy, "Голый"), BuffKind::Helmet));
+
+    // Шанс 100%, один тяжёлый рядом с лёгким: за четыре хода выпадают все четыре разных бонуса
+    for (unsigned seed = 0; seed < 50; ++seed) {
+        std::mt19937 rng(seed);
+        BuffGiver giver(100);
+        Army a;
+        a.add(make(c, UnitKind::Light, "Л"));
+        a.add(make(c, UnitKind::Heavy, "Т"));
+        std::vector<int> seen;
+        for (int turn = 0; turn < 4; ++turn) {
+            giver.newTurn();
+            auto r = giver.tryGrant(a, 0, rng);
+            CHECK(r.granted);
+            CHECK(std::find(seen.begin(), seen.end(), static_cast<int>(r.buff)) == seen.end());
+            seen.push_back(static_cast<int>(r.buff));
+        }
+        CHECK(hasBuff(*a.at(1), BuffKind::Helmet) && hasBuff(*a.at(1), BuffKind::Shield) &&
+              hasBuff(*a.at(1), BuffKind::Spear) && hasBuff(*a.at(1), BuffKind::Horse));
+        const std::string name = a.at(1)->name();
+        giver.newTurn();
+        CHECK(!giver.tryGrant(a, 0, rng).granted);   // все бонусы выданы, больше давать нечего
+        CHECK(a.at(1)->name() == name);
+    }
+}
+
 void testFactoryMethodAndAcademy() {
     UnitCatalog c = loadDefault();
     CHECK(UnitCreator::forKind(UnitKind::Mage).kind() == UnitKind::Mage);
@@ -268,6 +301,7 @@ int main() {
     testHealer();
     testDecorator();
     testBuffGiver();
+    testBuffNotRepeated();
     testFactoryMethodAndAcademy();
     testArmyFactories();
     testSaveRoundTrip();
