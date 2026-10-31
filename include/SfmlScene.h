@@ -2,6 +2,7 @@
 #include <SFML/Graphics.hpp>
 #include <filesystem>
 #include <optional>
+#include <algorithm>
 #include "View.h"
 #include "BattleLog.h"
 #include "BattlePlayback.h"
@@ -11,6 +12,8 @@ namespace sfmlui {
 inline constexpr float Width = 1440.f, Height = 900.f;
 inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 104, Speed = 105, Pause = 106;
 inline constexpr int RemoveBase = 1000;
+inline constexpr float FooterButtonWidth = 246.f, FooterGap = 12.f, FooterHeight = 52.f;
+inline constexpr sf::Vector2f RosterCardSize{139.f, 140.f};
 struct RosterCard {
     sf::FloatRect bounds;
     std::size_t index;
@@ -19,7 +22,12 @@ struct DragState {
     std::size_t from = 0;
     sf::Vector2f origin, pointer;
     bool active = false;
+    sf::Vector2f grab{RosterCardSize.x / 2, RosterCardSize.y / 2};
 };
+inline sf::Vector2f dragPosition(const DragState& drag) {
+    return {std::clamp(drag.pointer.x - drag.grab.x, 48.f, 1248.f),
+            std::clamp(drag.pointer.y - drag.grab.y, 120.f, 740.f)};
+}
 struct RosterTransition {
     ArmyEdit edit;
     UnitSnapshot unit;
@@ -63,6 +71,7 @@ public:
     const std::vector<RosterCard>& rosterCards() const {
         return rosterCards_;
     }
+    std::optional<std::size_t> dropTarget(const DragState& drag) const;
     float textWidth(const sf::String& value, unsigned size = LogSize, bool display = false) const;
     const std::vector<sf::FloatRect>& textBounds() const {
         return textBounds_;

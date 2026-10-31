@@ -82,6 +82,9 @@ struct SfmlView::Impl {
         append(text, team);
     }
     void notice(const std::string& text) {
+        if (text.rfind("Набор армии:", 0) == 0 || text == "Выберите управление ходами." ||
+            text == "Как игроки набирают армии?")
+            return;
         state.notices.push_back(text);
         if (state.notices.size() > 4)
             state.notices.erase(state.notices.begin());
@@ -181,10 +184,9 @@ struct SfmlView::Impl {
                         state.drag.reset();
                         const auto& units = state.battle.armies[state.recruitment.activeTeam].units;
                         if (drag.active && drag.from < units.size()) {
-                            state.rosterTransition = sfmlui::RosterTransition{
-                                ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from}, units[drag.from], 0,
-                                sf::Vector2f(std::clamp(drag.pointer.x - 69.f, 48.f, 1248.f),
-                                             std::clamp(drag.pointer.y - 35.f, 570.f, 620.f))};
+                            state.rosterTransition =
+                                sfmlui::RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from},
+                                                         units[drag.from], 0, sfmlui::dragPosition(drag)};
                             uiFrame.restart();
                         }
                         continue;
@@ -269,9 +271,8 @@ struct SfmlView::Impl {
                         return std::nullopt; // Refresh page hit regions before a queued drop.
                 }
             }
-            const bool editable = state.recruiting &&
-                                  state.recruitment.screen == RecruitmentScreen::Academy &&
-                                  !state.enteringNumber && !state.enteringText;
+            const bool editable =
+                state.recruiting && !state.rosterTransition && !state.enteringNumber && !state.enteringText;
             if (const auto* down = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (editable && down->button == sf::Mouse::Button::Left) {
                     const auto pos = window.mapPixelToCoords(down->position, camera);
@@ -281,7 +282,8 @@ struct SfmlView::Impl {
                     if (!overButton)
                         for (const auto& card : scene.rosterCards())
                             if (card.bounds.contains(pos)) {
-                                state.drag = sfmlui::DragState{card.index, pos, pos, false};
+                                state.drag = sfmlui::DragState{card.index, pos, pos, false,
+                                                               pos - card.bounds.position};
                                 break;
                             }
                 }
@@ -300,33 +302,22 @@ struct SfmlView::Impl {
                     continue;
                 const auto pos = window.mapPixelToCoords(click->position, camera);
                 if (state.drag) {
-                    const auto drag = *state.drag;
+                    auto drag = *state.drag;
+                    drag.pointer = pos;
                     state.drag.reset();
                     if (drag.active) {
-                        if (pos.y >= 570 && pos.y <= 744 && pos.x >= 48 && pos.x <= 1250 &&
-                            !scene.rosterCards().empty()) {
-                            const auto target = std::min_element(
-                                scene.rosterCards().begin(), scene.rosterCards().end(),
-                                [&](const sfmlui::RosterCard& a, const sfmlui::RosterCard& b) {
-                                    return std::abs(pos.x - a.bounds.position.x - 69) <
-                                           std::abs(pos.x - b.bounds.position.x - 69);
-                                });
-                            if (target->index != drag.from) {
-                                pendingEdit = ArmyEdit{ArmyEdit::Kind::Move, drag.from, target->index};
-                                const auto& old = state.battle.armies[state.recruitment.activeTeam].units;
-                                nextTransition = sfmlui::RosterTransition{
-                                    *pendingEdit, old[drag.from], 0,
-                                    sf::Vector2f(std::clamp(pos.x - 69.f, 48.f, 1248.f),
-                                                 std::clamp(pos.y - 35.f, 570.f, 620.f))};
-                                return static_cast<int>(uiAction::ArmyEdit);
-                            }
+                        if (const auto target = scene.dropTarget(drag); target && *target != drag.from) {
+                            pendingEdit = ArmyEdit{ArmyEdit::Kind::Move, drag.from, *target};
+                            const auto& old = state.battle.armies[state.recruitment.activeTeam].units;
+                            nextTransition = sfmlui::RosterTransition{*pendingEdit, old[drag.from], 0,
+                                                                      sfmlui::dragPosition(drag)};
+                            return static_cast<int>(uiAction::ArmyEdit);
                         }
                         const auto& units = state.battle.armies[state.recruitment.activeTeam].units;
                         if (drag.from < units.size()) {
-                            state.rosterTransition = sfmlui::RosterTransition{
-                                ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from}, units[drag.from], 0,
-                                sf::Vector2f(std::clamp(pos.x - 69.f, 48.f, 1248.f),
-                                             std::clamp(pos.y - 35.f, 570.f, 620.f))};
+                            state.rosterTransition =
+                                sfmlui::RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, drag.from, drag.from},
+                                                         units[drag.from], 0, sfmlui::dragPosition(drag)};
                             uiFrame.restart();
                         }
                         continue;
@@ -510,7 +501,7 @@ std::optional<std::uint32_t> SfmlView::choose(const std::vector<MenuChoice>& cho
     while (true) {
         impl_->draw();
         if (const auto action = impl_->poll()) {
-            if (s.recruiting && s.recruitment.screen == RecruitmentScreen::Academy) {
+            if (s.recruiting) {
                 const auto& units = s.battle.armies[s.recruitment.activeTeam].units;
                 if (*action >= sfmlui::RemoveBase &&
                     static_cast<std::size_t>(*action - sfmlui::RemoveBase) < units.size()) {
@@ -526,6 +517,12 @@ std::optional<std::uint32_t> SfmlView::choose(const std::vector<MenuChoice>& cho
                 }
             }
             if (*action >= 0 && impl_->hasChoice(static_cast<std::uint32_t>(*action))) {
+                if (s.recruiting && (*action == static_cast<int>(uiAction::ClearArmy) ||
+                                     (s.recruitment.screen == RecruitmentScreen::Methods &&
+                                      (*action == 1 || *action == 3)))) {
+                    s.rosterTransition.reset();
+                    s.offsets[s.recruitment.activeTeam] = 0;
+                }
                 s.choices.clear();
                 return static_cast<std::uint32_t>(*action);
             }
@@ -552,15 +549,15 @@ void SfmlView::showArmies(const BattleSnapshot& frame) {
     impl_->draw();
 }
 void SfmlView::showRecruitment(const RecruitmentSnapshot& frame) {
-    if (impl_->nextTransition && frame.screen == RecruitmentScreen::Academy) {
-        impl_->state.rosterTransition = impl_->nextTransition;
-        impl_->nextTransition.reset();
-        impl_->uiFrame.restart();
-    }
     if (frame.screen != impl_->state.recruitment.screen ||
         frame.activeTeam != impl_->state.recruitment.activeTeam) {
         impl_->state.drag.reset();
         impl_->state.rosterTransition.reset();
+    }
+    if (impl_->nextTransition) {
+        impl_->state.rosterTransition = impl_->nextTransition;
+        impl_->nextTransition.reset();
+        impl_->uiFrame.restart();
     }
     impl_->state.recruitment = frame;
     impl_->state.battle.armies = frame.armies;

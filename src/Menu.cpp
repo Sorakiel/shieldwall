@@ -121,7 +121,7 @@ BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academ
 const char* buildError(BuildResult result) {
     switch (result) {
     case BuildResult::Ok:
-        return "Состав обновлён.";
+        return "";
     case BuildResult::NotEnoughBudget:
         return "Недостаточно бюджета для этого бойца.";
     case BuildResult::UnknownKind:
@@ -328,7 +328,6 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         Army generated = factory->createArmy(data.costLimit, armyRng);
         builders[recruitTeam] = std::make_unique<ArmyBuilder>(
             ArmyBuilder::restore(catalog_, data.costLimit, SaveService::snapshot(generated)));
-        ui_.message(factory->title() + ": " + EventFormatter::teamName(recruitTeam));
         saveRecruitment();
     };
     auto enterReady = [&] {
@@ -375,7 +374,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                         const auto value =
                             setupStep == 0 ? ui_.readSetupNumber("Лимит цены каждой армии: ", minBudget,
                                                                  std::numeric_limits<int>::max(),
-                                                                 NumberCancel::MainMenu, setupBudget)
+                                                                 NumberCancel::Previous, setupBudget)
                                            : ui_.readSetupNumber("Seed (например, 42): ", 0,
                                                                  std::numeric_limits<std::uint32_t>::max(),
                                                                  NumberCancel::Previous, setupSeed);
@@ -400,7 +399,10 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                             ++setupStep;
                     }
                 } catch (const ViewBack&) {
-                    setupStep = std::max(0, setupStep - 1);
+                    if (setupStep == 0)
+                        cancelled = true;
+                    else
+                        --setupStep;
                 }
             }
             if (cancelled) {
@@ -466,23 +468,16 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             if (recruitScreen == RecruitmentScreen::Methods) {
                 ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
                 choices = {{1, "Случайный набор"}, {2, "Ручная закупка"}, {3, "Сжатый набор"}};
-                if (hasUnits)
-                    choices.push_back({30, "Армия готова"});
-            } else if (recruitScreen == RecruitmentScreen::Generated) {
-                choices = {{1, "Создать снова"},
-                           {2, "Ручная закупка"},
-                           {3, "Другой способ набора"},
-                           {30, "Армия готова", hasUnits},
-                           {40, "Сохранить"}};
             } else {
                 for (const auto& offer : frame.offers)
                     choices.push_back({buyAction(offer.kind),
                                        std::string("Купить: ") + unitKindName(offer.kind), offer.enabled});
-                choices.push_back({20, "Убрать бойца", hasUnits});
-                choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
-                choices.push_back({30, "Армия готова", hasUnits});
-                choices.push_back({40, "Сохранить"});
             }
+            // Console actions; SFML exposes these edits directly on the cards.
+            choices.push_back({20, "Убрать бойца", hasUnits});
+            choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
+            choices.push_back({uiAction::ClearArmy, "Очистить армию", hasUnits});
+            choices.push_back({30, "Армия готова", hasUnits});
             choices.push_back({uiAction::Back, "Назад", true, true});
             choices.push_back({0, "В главное меню"});
             const auto choice = ui_.choose(choices);
@@ -505,8 +500,9 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 }
                 break;
             }
-            if (*choice == 40) {
-                saveByName(SavePhase::Recruitment, 0);
+            if (*choice == uiAction::ClearArmy) {
+                builders[team] = std::make_unique<ArmyBuilder>(catalog_, data.costLimit);
+                saveRecruitment();
                 break;
             }
             if (*choice == 30) {
@@ -524,23 +520,14 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 enterReady();
                 break;
             }
-            if (recruitScreen == RecruitmentScreen::Methods) {
+            if (recruitScreen == RecruitmentScreen::Methods &&
+                (*choice == 1 || *choice == 2 || *choice == 3)) {
                 if (*choice == 2)
                     recruitScreen = RecruitmentScreen::Academy;
                 else if (*choice == 1 || *choice == 3) {
                     generatedAlgorithm = *choice == 3 ? ArmyAlgorithm::Compact : ArmyAlgorithm::Random;
                     generateDraft();
-                    recruitScreen = RecruitmentScreen::Generated;
                 }
-                break;
-            }
-            if (recruitScreen == RecruitmentScreen::Generated) {
-                if (*choice == 1)
-                    generateDraft();
-                else if (*choice == 2)
-                    recruitScreen = RecruitmentScreen::Academy;
-                else if (*choice == 3)
-                    recruitScreen = RecruitmentScreen::Methods;
                 break;
             }
             BuildResult outcome = BuildResult::UnknownKind;
@@ -574,9 +561,10 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                     }
                 }
             }
-            ui_.message(buildError(outcome));
             if (outcome == BuildResult::Ok)
                 saveRecruitment();
+            else
+                ui_.message(buildError(outcome));
             break;
         }
         case State::Ready: {
@@ -585,38 +573,23 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                         ". Обе армии готовы.");
             ui_.showArmies(*session.armyA, *session.armyB);
             showPendingMessages();
-            const auto choice = ui_.choose({{1, "К бою"},
-                                            {2, "Изменить армии"},
-                                            {3, "Настройки"},
-                                            {4, "Загрузить"},
-                                            {40, "Сохранить"},
-                                            {uiAction::Back, "Назад", true, true},
-                                            {0, "В главное меню"}});
+            const auto choice =
+                ui_.choose({{1, "К бою"}, {uiAction::Back, "Назад", true, true}, {0, "В главное меню"}});
             if (!choice)
                 return;
             if (*choice == 0) {
                 state = State::Welcome;
                 break;
             }
-            if (*choice == 40) {
-                saveByName(SavePhase::Battle, 0);
-                break;
-            }
-            if (*choice == 2 || *choice == uiAction::Back) {
+            if (*choice == uiAction::Back) {
                 clearSession(session);
                 saveRecruitment();
-                recruitTeam = *choice == uiAction::Back ? 1 : 0;
+                recruitTeam = 1;
                 recruitScreen = RecruitmentScreen::Methods;
                 needHandoff = true;
                 handoffReturn = 2;
                 state = State::Recruitment;
-            } else if (*choice == 3) {
-                setupStep = 0;
-                state = State::Setup;
-            } else if (*choice == 4) {
-                loadReturn = State::Ready;
-                state = State::Load;
-            } else
+            } else if (*choice == 1)
                 state = State::Battle;
             break;
         }
@@ -717,18 +690,12 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 resultShown = true;
             }
             showPendingMessages();
-            const auto choice = ui_.choose({{1, "Новая партия"},
-                                            {2, "Загрузить"},
-                                            {40, "Сохранить"},
-                                            {0, "В главное меню", true, true}});
+            const auto choice =
+                ui_.choose({{1, "Новая партия"}, {2, "Загрузить"}, {0, "В главное меню", true, true}});
             if (!choice)
                 return;
             if (*choice == 0) {
                 state = State::Welcome;
-                break;
-            }
-            if (*choice == 40) {
-                saveByName(SavePhase::Result, session.turn);
                 break;
             }
             loadReturn = State::Result;
