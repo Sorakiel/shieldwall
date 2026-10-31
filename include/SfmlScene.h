@@ -5,10 +5,27 @@
 #include "View.h"
 #include "BattleLog.h"
 #include "BattlePlayback.h"
+#include "ArmyUi.h"
 
 namespace sfmlui {
 inline constexpr float Width = 1440.f, Height = 900.f;
 inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 104, Speed = 105, Pause = 106;
+inline constexpr int RemoveBase = 1000;
+struct RosterCard {
+    sf::FloatRect bounds;
+    std::size_t index;
+};
+struct DragState {
+    std::size_t from = 0;
+    sf::Vector2f origin, pointer;
+    bool active = false;
+};
+struct RosterTransition {
+    ArmyEdit edit;
+    UnitSnapshot unit;
+    float progress = 0;
+    std::optional<sf::Vector2f> drop;
+};
 inline constexpr std::size_t PageUnits = 5;
 inline constexpr unsigned LogSize = 14;
 inline constexpr int LogLines = 23;
@@ -33,6 +50,8 @@ struct State {
     float speed = 1.f, ambience = 0.f;
     std::string prompt, input, error, result;
     std::optional<presentation::Step> effect;
+    std::optional<DragState> drag;
+    std::optional<RosterTransition> rosterTransition;
 };
 class Scene {
 public:
@@ -40,6 +59,9 @@ public:
     void draw(sf::RenderTarget& target, const State& state, sf::Vector2f mouse = {-1.f, -1.f});
     const std::vector<Button>& buttons() const {
         return buttons_;
+    }
+    const std::vector<RosterCard>& rosterCards() const {
+        return rosterCards_;
     }
     float textWidth(const sf::String& value, unsigned size = LogSize, bool display = false) const;
     const std::vector<sf::FloatRect>& textBounds() const {
@@ -53,6 +75,7 @@ private:
     sf::RenderTarget* target_ = nullptr;
     sf::Vector2f mouse_;
     std::vector<Button> buttons_;
+    std::vector<RosterCard> rosterCards_;
     std::vector<sf::FloatRect> textBounds_;
     void box(float x, float y, float w, float h, sf::Color fill, float radius = 12.f,
              sf::Color stroke = sf::Color::Transparent);

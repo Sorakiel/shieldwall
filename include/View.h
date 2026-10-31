@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -9,9 +10,21 @@
 #include "Event.h"
 
 enum class ViewStage { MainMenu, Setup, Recruitment, Battle, Result };
-enum class NumberCancel { MainMenu, Dialog };
+enum class NumberCancel { MainMenu, Dialog, Previous };
+namespace uiAction {
+inline constexpr std::uint32_t Back = 0x70000000u, ArmyEdit = 0x70000001u;
+}
+enum class RecruitmentScreen { Methods, Academy, Generated };
+struct ArmyEdit {
+    enum class Kind { Remove, Move } kind = Kind::Remove;
+    std::size_t from = 0, to = 0;
+};
+class ViewBack : public std::exception {};
+class PlaybackStopped : public std::exception {};
+
 enum class BattleMode { Automatic, Manual };
 enum class TurnAction { Next, Automatic, Manual, Exit, Save };
+using PlaybackHandler = std::function<bool(TurnAction)>;
 
 struct UnitSnapshot {
     UnitKind kind;
@@ -51,6 +64,7 @@ struct RecruitmentOffer {
 };
 
 struct RecruitmentSnapshot {
+    RecruitmentScreen screen = RecruitmentScreen::Methods;
     std::array<ArmySnapshot, 2> armies;
     std::vector<RecruitmentOffer> offers;
     int activeTeam = 0;
@@ -68,6 +82,12 @@ public:
 class View {
 public:
     virtual ~View() = default;
+    virtual void setPlaybackHandler(PlaybackHandler) {}
+    virtual std::optional<ArmyEdit> takeArmyEdit() { return std::nullopt; }
+    virtual std::optional<std::uint32_t> readSetupNumber(const std::string& prompt,
+        std::uint32_t min, std::uint32_t max, NumberCancel cancel, std::uint32_t) {
+        return readNumberCancelable(prompt, min, max, cancel);
+    }
     virtual void setStage(ViewStage) {}
     virtual void clearDisplay() {}
     virtual void setBattleProgress(int, BattleMode) {}
@@ -105,4 +125,7 @@ std::optional<std::uint32_t> parseNumber(const std::string& text,
                                        std::uint32_t min, std::uint32_t max);
 const char* unitKindName(UnitKind kind);
 
+std::string counted(std::size_t count, const char* one, const char* few, const char* many);
+std::string unitCount(std::size_t count);
+std::string moneyCount(std::size_t count);
 std::string specialActionDescription(UnitKind kind, int power, int range);
