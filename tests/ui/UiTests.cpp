@@ -155,6 +155,7 @@ namespace {
         std::vector<std::string> messages;
         struct EventText { int turn; int team; std::string text; };
         std::vector<EventText> eventTexts;
+        std::vector<BattleEvent> animationEvents;
         std::vector<ViewStage> stages;
         std::deque<std::uint32_t> numbers;
         std::deque<std::uint32_t> actions;
@@ -178,6 +179,10 @@ namespace {
         void battleMessage(int turn, int team, const std::string& text) override {
             eventTexts.push_back({turn, team, text});
             View::battleMessage(turn, team, text);
+        }
+        void battleEvent(const BattleEvent& event, const std::string& text) override {
+            animationEvents.push_back(event);
+            View::battleEvent(event, text);
         }
         void showArmies(const BattleSnapshot& frame) override {
             frames.push_back(frame);
@@ -208,6 +213,9 @@ namespace {
         const auto expected = EventFormatter::format(event, expectedRng);
         ui.showEvents({ event }, rng);
         CHECK(view.messages.back() == expected);
+        CHECK(view.animationEvents.size() == 1);
+        CHECK(view.animationEvents.back().type == EventType::Shot);
+        CHECK(view.animationEvents.back().damage == 5 && view.animationEvents.back().hpLeft == 40);
         CHECK(view.eventTexts.size() == 1);
         CHECK(view.eventTexts.back().turn == 1);
         CHECK(view.eventTexts.back().team == 0);

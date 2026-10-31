@@ -19,12 +19,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxrandr-dev libxcursor-dev libxi-dev libudev-dev libgl1-mesa-dev
+          sudo apt-get install -y libxrandr-dev libxcursor-dev libxi-dev libudev-dev libgl1-mesa-dev xvfb
 
       - name: Сборка приложения
         run: |
           cmake -B build
           cmake --build build --config Release
+
+      - name: Сборка SFML и проверки отрисовки
+        run: |
+          cmake -B build-gui -DSHIELDWALL_GRAPHICS=ON -DSHIELDWALL_VISUAL_TESTS=ON
+          cmake --build build-gui --config Release --parallel 4
+
+      - name: Экраны SFML без открытия окна
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./build-gui/sfml_visual_tests assets build/previews
 
       # tests/ui собирает и тесты оболочки, и тесты данных
       - name: Тесты

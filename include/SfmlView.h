@@ -5,7 +5,7 @@
 
 class SfmlView final : public View {
 public:
-    explicit SfmlView(const std::filesystem::path& fontPath);
+    explicit SfmlView(const std::filesystem::path& assetDirectory);
     ~SfmlView() override;
     void setStage(ViewStage stage) override;
     void setBattleProgress(int turn, BattleMode mode) override;
@@ -22,6 +22,7 @@ public:
     std::optional<std::uint32_t> choose(const std::vector<MenuChoice>& choices) override;
     void message(const std::string& text) override;
     void battleMessage(int turn, int team, const std::string& text) override;
+    void battleEvent(const BattleEvent& event, const std::string& text) override;
     void showArmies(const BattleSnapshot& snapshot) override;
     void showResult(int winner, const std::string& text) override;
 

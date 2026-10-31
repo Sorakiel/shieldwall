@@ -55,7 +55,10 @@ add_executable(console_layout_tests ConsoleLayoutTests.cpp
     "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp")
 target_include_directories(console_layout_tests PRIVATE "${Root}/include")
 
-foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests ability_engine_tests console_layout_tests)
+add_executable(battle_playback_tests BattlePlaybackTests.cpp)
+target_include_directories(battle_playback_tests PRIVATE "${Root}/include")
+
+foreach(Target test_support ui_tests data_tests session_tests save_ui_tests pattern_tests ability_engine_tests console_layout_tests battle_playback_tests)
     if(MSVC)
         target_compile_options(${Target} PRIVATE /utf-8 /W4)
         if(NOT Target STREQUAL "test_support")
@@ -74,4 +77,5 @@ add_test(NAME save_ui COMMAND save_ui_tests)
 add_test(NAME patterns COMMAND pattern_tests)
 add_test(NAME ability_engine COMMAND ability_engine_tests)
 add_test(NAME console_layout COMMAND console_layout_tests)
-set_tests_properties(ui data session save_ui patterns ability_engine console_layout PROPERTIES WORKING_DIRECTORY "${Root}")
+add_test(NAME battle_playback COMMAND battle_playback_tests)
+set_tests_properties(ui data session save_ui patterns ability_engine console_layout battle_playback PROPERTIES WORKING_DIRECTORY "${Root}")

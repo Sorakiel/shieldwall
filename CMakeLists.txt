@@ -54,7 +54,7 @@ if(MSVC)
 endif()
 
 if(SHIELDWALL_GRAPHICS)
-    target_sources(shieldwall PRIVATE src/SfmlView.cpp)
+    target_sources(shieldwall PRIVATE src/SfmlView.cpp src/SfmlScene.cpp)
     # Архив с проверкой SHA-256: отдельно устанавливать SFML или Git не требуется.
     include(FetchContent)
     # FreeType 2.13 объявляет старый минимум; эта настройка нужна для CMake 4.
@@ -80,6 +80,15 @@ if(SHIELDWALL_GRAPHICS)
     )
     FetchContent_MakeAvailable(SFML)
     target_link_libraries(shieldwall PRIVATE SFML::Graphics)
+    option(SHIELDWALL_VISUAL_TESTS "Build offscreen SFML scene checks" OFF)
+    if(SHIELDWALL_VISUAL_TESTS)
+        add_executable(sfml_visual_tests tests/ui/SfmlVisualTests.cpp src/SfmlScene.cpp src/View.cpp src/EventFormatter.cpp)
+        target_include_directories(sfml_visual_tests PRIVATE include)
+        target_link_libraries(sfml_visual_tests PRIVATE SFML::Graphics)
+        if(MSVC)
+            target_sources(sfml_visual_tests PRIVATE src/WindowsUtf8.manifest)
+        endif()
+    endif()
 
 endif()
 

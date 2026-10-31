@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
         std::unique_ptr<View> view;
         if (console) view = std::make_unique<ConsoleView>(std::cin, std::cout);
 #if SHIELDWALL_GRAPHICS
-        else view = std::make_unique<SfmlView>(resource(directory, "assets/NotoSans-Regular.ttf"));
+        else view = std::make_unique<SfmlView>(resource(directory, "assets"));
 #else
         else view = std::make_unique<ConsoleView>(std::cin, std::cout);
 #endif
