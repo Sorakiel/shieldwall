@@ -27,6 +27,9 @@ struct SfmlView::Impl {
         window.create(
             sf::VideoMode({static_cast<unsigned>(1280 * scale), static_cast<unsigned>(800 * scale)}),
             "Shieldwall", sf::Style::Default, sf::State::Windowed, settings);
+        sf::Image icon;
+        if (icon.loadFromFile(assetDirectory / "shieldwall.png"))
+            window.setIcon(icon.getSize(), icon.getPixelsPtr());
         window.setFramerateLimit(60);
         window.setKeyRepeatEnabled(false);
         viewport(window.getSize());
