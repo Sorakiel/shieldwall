@@ -148,6 +148,10 @@ int main(int argc, char** argv) {
             if (choice.value == 30 || choice.value == uiAction::ClearArmy || choice.value == 20 ||
                 choice.value == 21)
                 choice.enabled = false;
+        State redEmpty = empty;
+        redEmpty.recruitment.activeTeam = 1;
+        redEmpty.battle.armies[1].units.clear();
+        render("31-red-recruitment", redEmpty);
         render("24-empty-recruitment", empty);
         if (getButton(30).enabled || getButton(static_cast<int>(uiAction::ClearArmy)).enabled)
             throw std::runtime_error("Empty army can be confirmed or cleared");

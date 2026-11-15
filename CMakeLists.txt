@@ -48,6 +48,12 @@ add_executable(shieldwall
 target_include_directories(shieldwall PRIVATE include)
 target_compile_definitions(shieldwall PRIVATE SHIELDWALL_GRAPHICS=$<BOOL:${SHIELDWALL_GRAPHICS}>)
 
+if(WIN32)
+    enable_language(RC)
+    configure_file(src/WindowsIcon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/ShieldwallIcon.rc" @ONLY)
+    target_sources(shieldwall PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ShieldwallIcon.rc")
+endif()
+
 if(MSVC)
     # /utf-8 задаёт кодировку исходников, манифест — путей во время работы.
     target_sources(shieldwall PRIVATE src/WindowsUtf8.manifest)
