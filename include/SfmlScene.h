@@ -104,7 +104,7 @@ private:
     void warrior(UnitKind kind, float x, float y, float size, sf::Color color, bool facingLeft = false,
                  float opacity = 1.f);
     void background(const State& state);
-    void header(const std::string& section, const std::string& subtitle);
+    void header();
     void menu(const State& state);
     void settings(const State& state);
     void recruitment(const State& state);

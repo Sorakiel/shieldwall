@@ -323,12 +323,10 @@ void Scene::background(const State& s) {
              i % 3 == 0 ? 1.4f : .7f, alpha(gold, .1f + (i % 4) * .035f));
     line({32, 96}, {1408, 96}, alpha(gold, .22f));
 }
-void Scene::header(const std::string& section, const std::string& subtitle) {
+void Scene::header() {
     crest(34, 28, 31, gold);
     label("SHIELDWALL", 80, 23, 27, paper, true);
     label("ТАКТИЧЕСКАЯ ДУЭЛЬ", 81, 58, 9, muted);
-    label(section, 1090, 28, 23, gold, true);
-    text(fit(subtitle, 315, 11), 1090, 59, 11, muted);
 }
 void Scene::notice(const State& s, float x, float y, float width) {
     if (s.notices.empty())
@@ -342,46 +340,40 @@ void Scene::notice(const State& s, float x, float y, float width) {
     text(fit(v, width - 55, 13), x + 35, y + 14, 13, muted);
 }
 void Scene::menu(const State& s) {
-    header("Главное меню", "Соберите строй. Оставьте след.");
-    label("СТРАТЕГИЯ В ОДНОМ СТРОЮ", 112, 162, 12, gold);
+    header();
     label("SHIELDWALL", 106, 204, 88, paper, true);
-    line({114, 322}, {400, 322}, gold, 2);
-    label("Каждый воин.\nКаждый ход.", 112, 345, 44, paper, true);
-    label("Две армии. Один исход. Ваше решение.", 115, 463, 16, muted);
     for (std::size_t i = 0; i < s.choices.size(); ++i) {
         const auto& c = s.choices[i];
-        button(c.label, 114, 526.f + i * 70.f, 365, static_cast<int>(c.value), c.enabled, i == 0, 54);
+        button(c.label, 114, 345.f + i * 70.f, 365, static_cast<int>(c.value), c.enabled, i == 0, 54);
     }
     disc(1008, 389, 207, alpha(gold, .025f));
     disc(1008, 389, 163, alpha(gold, .035f));
     crest(903, 257, 222, gold);
-    line({820, 534}, {1195, 534}, alpha(gold, .35f));
-    label("ДЕРЖИ СТРОЙ", 891, 563, 37, paper, true);
-    label("Сила армии — в тех, кто стоит рядом.", 845, 617, 14, muted);
     notice(s, 114, 764, 1212);
-    label("ЛОКАЛЬНАЯ ИГРА  /  ДВА ПОЛКОВОДЦА", 115, 845, 10, muted);
-    label("Терпение. Тактика. Победа.", 1110, 839, 17, gold, true);
 }
 
 void Scene::settings(const State& s) {
-    header("Новая партия", "Правила будущего сражения");
+    header();
     const bool shared = std::any_of(s.choices.begin(), s.choices.end(),
                                     [](const MenuChoice& c) { return c.label == "Общий экран"; });
     const bool seed = contains(s.prompt, "Seed");
-    label("ПОДГОТОВКА К ПОХОДУ", 104, 156, 12, gold);
-    label(s.enteringNumber ? (seed ? "Жребий судьбы" : "Цена победы")
-          : shared         ? "Два полководца"
-                           : "Ритм сражения",
+    label("НАСТРОЙКИ ПАРТИИ", 104, 156, 12, gold);
+    label(s.enteringNumber ? (seed ? "Seed партии" : "Бюджет армий")
+          : shared         ? "Видимость армий"
+                           : "Управление ходами",
           100, 190, 58, paper, true);
     paragraph(
         s.enteringNumber
-            ? (seed ? "Одинаковый seed — одинаковый исход. Сохраните число, чтобы повторить сражение."
-                    : "Каждая армия получает одинаковый бюджет. Сделайте ставку на число воинов или на их "
-                      "силу.")
+            ? (seed ? "Seed — число для генерации армий и случайных действий в бою. Одинаковые seed, "
+                      "настройки и действия игроков дают одинаковый результат."
+                    : "Укажите максимальную стоимость каждой армии. Общая цена нанятых бойцов "
+                      "не может превышать этот лимит.")
         : shared
-            ? "Набирайте армии открыто или передавайте управление друг другу, скрывая состав до начала боя."
-            : "Изучайте каждое действие или наблюдайте за сражением в автоматическом режиме.",
-        104, 279, 510, 17, muted);
+            ? "Выберите, показывать ли армии обоим игрокам во время набора или скрывать состав "
+              "соперника до начала боя."
+            : "Выберите, начинать ли ходы автоматически или запускать каждый ход кнопкой. "
+              "Бойцы выбирают свои действия сами в обоих режимах.",
+        104, 279, 640, 17, muted);
     crest(1120, 196, 130, alpha(gold, .18f));
     if (s.enteringNumber && s.numberCancel != NumberCancel::Dialog) {
         box(104, 392, 584, 286, panel, 16, border);
@@ -412,7 +404,7 @@ void Scene::settings(const State& s) {
             const float x = 104.f + i * 622.f;
             box(x, 400, 590, 260, panel, 16, border);
             label(shared ? (i == 0 ? "I  ОТКРЫТЫЙ НАБОР" : "II  СКРЫТЫЙ НАБОР")
-                         : (i == 0 ? "I  НАБЛЮДАЙТЕ" : "II  КОМАНДУЙТЕ"),
+                         : (i == 0 ? "I  БЕЗ ПОДТВЕРЖДЕНИЯ" : "II  ПО ПОДТВЕРЖДЕНИЮ"),
                   x + 30, 428, 12, gold);
             label(c.label, x + 30, 465, 37, paper, true);
             paragraph(shared ? (i == 0 ? "Оба состава доступны на одном экране."
@@ -443,9 +435,9 @@ void Scene::actions(const State& s, float x, float y, float width, int columns) 
 void Scene::recruitment(const State& s) {
     const auto& r = s.recruitment;
     const auto color = teamColor(r.activeTeam);
-    header("Набор армии", r.activeTeam == 0 ? "Полководец I · Синие" : "Полководец II · Красные");
-    label("ПОД ВАШИМ ЗНАМЕНЕМ", 50, 120, 11, color);
-    label(methodScreen(s) ? "Призовите свой отряд" : "Военная академия", 48, 145, 43, paper, true);
+    header();
+    label(r.activeTeam == 0 ? "Синяя команда" : "Красная команда", 50, 120, 15, color);
+    label(methodScreen(s) ? "Набор армии" : "Военная академия", 48, 145, 43, paper, true);
     box(1008, 120, 382, 65, panel, 12, border);
     label("БЮДЖЕТ", 1028, 132, 10, muted);
     {
@@ -472,9 +464,9 @@ void Scene::recruitment(const State& s) {
         label(number, 1280, 150, size, gold, true);
     }
     if (methodScreen(s)) {
-        const std::string desc[] = {"Каждый новый строй —\nновая история сражения.",
+        const std::string desc[] = {"Случайный выбор бойцов\nв пределах бюджета.",
                                     "Выберите каждого бойца\nи его место в строю.",
-                                    "Плотный строй с упором\nна доступных бойцов."};
+                                    "Автоматический набор\nот дорогих бойцов к дешёвым."};
         int i = 0;
         for (const auto& c : s.choices) {
             if (c.value < 1 || c.value > 3)
@@ -555,7 +547,7 @@ void Scene::recruitment(const State& s) {
     };
     if (a.units.empty()) {
         box(50, 584, 1340, 140, alpha(panel, .7f), 12, border);
-        label("История вашего отряда начинается здесь", 82, 612, 30, paper, true);
+        label("В армии пока нет бойцов", 82, 612, 30, paper, true);
         label("Выберите способ набора или наймите первого бойца в академии.", 84, 659, 15, muted);
     } else {
         for (std::size_t i = 0; i < 8 && offset + i < a.units.size(); ++i) {
@@ -706,12 +698,7 @@ void Scene::army(const State& s, int team) {
           left + 99, 669, 11, muted);
 }
 void Scene::field(const State& s) {
-    header(s.stage == ViewStage::Result   ? "Итоги сражения"
-           : s.stage == ViewStage::Battle ? "Ход " + std::to_string(s.turn)
-                                          : "Армии готовы",
-           s.stage == ViewStage::Battle
-               ? (s.playing ? "Каждое действие имеет значение" : "Ваш следующий приказ")
-               : "Два знамени. Один передний край.");
+    header();
     box(32, 140, 1020, 596, alpha(panel, .7f), 18, alpha(border, .7f));
     for (int row = 0; row < 8; ++row)
         line({50, 300.f + row * 44.f}, {1034, 300.f + row * 44.f}, alpha(gold, .035f));
@@ -729,7 +716,7 @@ void Scene::field(const State& s) {
                               : gold,
               true);
     } else
-        label(s.stage == ViewStage::Battle ? "ПЕРЕДНИЙ КРАЙ" : "ПОСЛЕДНИЙ СМОТР ПЕРЕД БОЕМ",
+        label(s.stage == ViewStage::Battle ? "ПЕРЕДНИЙ КРАЙ" : "АРМИИ ГОТОВЫ К БОЮ",
               s.stage == ViewStage::Battle ? 469.f : 370.f, 251, 10, gold);
     if (s.effect)
         effects(s);
@@ -755,7 +742,7 @@ void Scene::field(const State& s) {
 
 void Scene::journal(const State& s) {
     box(1072, 140, 336, 690, ink, 16, border);
-    label("Летопись боя", 1096, 164, 29, paper, true);
+    label("Журнал боя", 1096, 164, 29, paper, true);
     label("СОБЫТИЯ ПО ПОРЯДКУ", 1096, 205, 9, gold);
     line({1096, 230}, {1384, 230}, alpha(gold, .25f));
     const auto end = static_cast<int>(s.log.lines.size()) - s.logOffset, first = std::max(0, end - LogLines);
@@ -766,7 +753,7 @@ void Scene::journal(const State& s) {
     }
     if (s.log.lines.empty()) {
         crest(1195, 366, 73, alpha(gold, .18f));
-        paragraph("Сражение ещё не началось.\nПервый ход откроет летопись.", 1114, 492, 250, 14, muted);
+        paragraph("Сражение ещё не началось.\nЗдесь появятся события боя.", 1114, 492, 250, 14, muted);
     }
     if (static_cast<int>(s.log.lines.size()) > LogLines) {
         const float total = static_cast<float>(s.log.lines.size()),
@@ -870,9 +857,8 @@ void Scene::effects(const State& s) {
 void Scene::archive(const State& s) {
     const bool deleting = std::any_of(s.choices.begin(), s.choices.end(),
                                       [](const MenuChoice& c) { return c.label == "К загрузке"; });
-    header("Сохранения", "Вернитесь к незавершённой истории");
-    label(deleting ? "Управление летописями" : "Архив походов", 80, 126, 49, paper, true);
-    label("Каждый строй и каждый ход можно продолжить.", 83, 190, 15, muted);
+    header();
+    label(deleting ? "Удаление сохранений" : "Сохранения", 80, 126, 49, paper, true);
     std::size_t row = 0;
     State nav = s;
     nav.choices.clear();
@@ -902,9 +888,9 @@ void Scene::modal(const State& s) {
     box(360, 234, 720, 406, sf::Color(26, 36, 40), 18, border);
     line({390, 235}, {1050, 235}, gold, 2);
     const bool entry = s.enteringNumber || s.enteringText;
-    label(entry ? (s.enteringText                           ? "Сохранить летопись"
+    label(entry ? (s.enteringText                           ? "Сохранить игру"
                    : s.numberCancel == NumberCancel::Dialog ? "Изменить строй"
-                                                            : "Параметры похода")
+                                                            : "Настройки партии")
                 : "Подтвердите решение",
           396, 265, 38, paper, true);
     if (entry) {
@@ -953,9 +939,9 @@ void Scene::draw(sf::RenderTarget& target, const State& s, sf::Vector2f mouse) {
     textBounds_.clear();
     background(s);
     if (s.handoff >= 0) {
-        header("Передача управления", "Подготовка армий остаётся скрытой");
+        header();
         crest(656, 205, 126, teamColor(s.handoff));
-        label("Теперь ваш ход, полководец", 414, 388, 45, paper, true);
+        label("Передача управления", 414, 388, 45, paper, true);
         label("Игрок " + std::to_string(s.handoff + 1), 642, 461, 28, teamColor(s.handoff), true);
         label("Предыдущий игрок должен отвернуться от экрана.", 502, 526, 16, muted);
         button("Я готов — продолжить", 468, 600, FooterButtonWidth, Submit, true, false, FooterHeight);
