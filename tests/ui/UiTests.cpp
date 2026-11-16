@@ -41,10 +41,10 @@ namespace {
         };
         std::mt19937 rng(42);
         const std::string melee = EventFormatter::format(events[0], rng);
-        CHECK(contains(melee, "37 урона, осталось -13 hp"));
+        CHECK(contains(melee, "урон: 37, здоровье цели: -13"));
         CHECK(contains(melee, "«Тиль»") && contains(melee, "«Гурм»"));
         const std::string shot = EventFormatter::format(events[1], rng);
-        CHECK(contains(shot, "23 урона, осталось 19 hp"));
+        CHECK(contains(shot, "урон: 23, здоровье цели: 19"));
         CHECK(contains(shot, "«Вейн»") && contains(shot, "«Тиль»"));
 
         for (const BattleEvent& event : events) {
@@ -101,13 +101,13 @@ namespace {
         CHECK(first == menuOutput(script, catalog));
         CHECK(contains(first, "Введите целое число от 10"));
         CHECK(contains(first, "Введите целое число от 0 до 8"));
-        CHECK(contains(first, "Уборка завершена"));
+        CHECK(contains(first, "Ход завершён"));
         CHECK(contains(first, "Итог: победили"));
         CHECK(contains(first, "Новая партия"));
 
         // Ни отмена, ни конец ввода не должны запускать бой.
         for (const std::string scriptBeforeBattle : {"", "1\n10\n", "1\n10\n42\n1\n1\n", "1\n10\n42\n1\n1\n1\n1\n0\n"}) {
-            CHECK(!contains(menuOutput(scriptBeforeBattle, catalog), "Уборка завершена"));
+            CHECK(!contains(menuOutput(scriptBeforeBattle, catalog), "Ход завершён"));
         }
         const std::string regenerated = menuOutput("1\n40\n0\n1\n1\n1\n1\n7\n1\n1\n7\n1\n0\n0\n", catalog);
         CHECK(contains(regenerated, "Итог: победили"));
@@ -115,7 +115,7 @@ namespace {
         const auto result = reset.find("Итог: победили");
         CHECK(result != std::string::npos);
         CHECK(reset.find("Итог: победили", result + 1) != std::string::npos);
-        CHECK(contains(reset, "Лимит: 10, seed: 0"));
+        CHECK(contains(reset, "Бюджет каждой армии: 10, seed: 0"));
     }
 
     void testRunnerUsesEngineAndLeavesInputAlone() {
@@ -148,7 +148,7 @@ namespace {
         std::ostringstream finishedOutput;
         ConsoleUI finishedUi(input, finishedOutput);
         BattleRunner(finishedUi).run(engine, a, b, logRng);
-        CHECK(!contains(finishedOutput.str(), "Уборка завершена"));
+        CHECK(!contains(finishedOutput.str(), "Ход завершён"));
     }
 
     class RecordingView final : public View {

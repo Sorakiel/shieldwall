@@ -225,7 +225,7 @@ void testBadLoadPreservesFile(const UnitCatalog& catalog) {
     view.actions = {2, 0, 0};
     ConsoleUI ui(view);
     Menu(ui, catalog, file.path).run();
-    CHECK(view.hasMessage("Повреждён:"));
+    CHECK(view.hasMessage("Сохранение повреждено:"));
     CHECK(view.hasMessage("строка 1"));
     std::ifstream input(file.path);
     std::string line; std::getline(input, line);
@@ -420,8 +420,8 @@ void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     const auto saved = SaveService::loadFromFile(file.path);
     CHECK(saved.armyA.size() == 2 && saved.phase == SavePhase::Battle);
     CHECK(contains(output.str(), "Купить: Маг") && contains(output.str(), "Купить: Целитель"));
-    CHECK(contains(output.str(), "Клонирование 60%") && contains(output.str(), "Лечение 8 HP"));
-    CHECK(contains(output.str(), "Сжатый набор"));
+    CHECK(contains(output.str(), "Клонирование: шанс 60%") && contains(output.str(), "Лечение: до 8 здоровья"));
+    CHECK(contains(output.str(), "Набор по цене"));
     CHECK(!contains(output.str(), "Сохранить") && contains(output.str(), "Очистить армию"));
     // Catalog order and a smaller set of unit types must not change purchase action mapping.
     std::istringstream source("version;1\nhealer;18;2;8;3;0;22\nmage;14;2;60;3;0;25\n");

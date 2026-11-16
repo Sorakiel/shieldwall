@@ -107,9 +107,9 @@ Table armyRows(const ArmySnapshot& army, bool recruitment) {
     for (std::size_t index = 0; index < army.units.size(); ++index) {
         const auto& unit = army.units[index];
         rows.push_back({std::to_string(index + 1) + ". " + unitKindName(unit.kind) + " «" + unit.name + "»",
-            "hp " + (recruitment ? std::to_string(unit.maxHp) :
+            "Здоровье " + (recruitment ? std::to_string(unit.maxHp) :
                 std::to_string(unit.hp) + "/" + std::to_string(unit.maxHp)),
-            "цена " + std::to_string(unit.cost)});
+            "Стоимость " + std::to_string(unit.cost)});
     }
     return rows;
 }
@@ -152,14 +152,14 @@ bool inputReady() {
 std::optional<std::string> ConsoleView::readText(const std::string& prompt, std::size_t maxBytes) {
     std::string line;
     separateBlock();
-    message("/cancel — Отмена; пустое имя — предложенное имя сохранения.");
+    message("/cancel — отмена. Оставьте поле пустым, чтобы использовать предложенное имя.");
     while (true) {
         out_ << prompt << std::flush;
         lastLineBlank_ = false;
         if (!std::getline(in_, line)) return std::nullopt;
         if (line == "/cancel") return std::nullopt;
         if (line.size() <= maxBytes) return line;
-        message("Имя слишком длинное: максимум " + std::to_string(maxBytes) + " байт UTF-8.");
+        message("Имя слишком длинное. Сократите его.");
     }
 }
 
@@ -220,7 +220,7 @@ std::optional<std::uint32_t> ConsoleView::readNumber(const std::string& prompt,
         out_ << prompt << std::flush;
         lastLineBlank_ = false;
         if (!std::getline(in_, line)) {
-            message("Ввод завершён. До встречи!");
+            message("Ввод завершён.");
             return std::nullopt;
         }
         if (const auto value = parseNumber(line, min, max)) return value;
@@ -289,9 +289,9 @@ void ConsoleView::showArmies(const BattleSnapshot& snapshot) {
         separateBlock();
         const bool color = beginTeamColor(static_cast<int>(i));
         message(army.name + " — бойцов: " + std::to_string(army.units.size()) +
-                ", стоимость: " + std::to_string(army.totalCost));
+                ", стоимость: " + moneyCount(static_cast<std::size_t>(army.totalCost)));
         separateBlock();
-        if (tables[i].empty()) message("Строй пуст.");
+        if (tables[i].empty()) message("В армии пока нет бойцов.");
         else printTable(*this, tables[i], widths);
         if (color) out_ << "\033[0m";
     }
@@ -303,7 +303,7 @@ TurnAction ConsoleView::waitForTurn(BattleMode mode) {
     if (mode == BattleMode::Automatic && !interactiveInput(in_)) return TurnAction::Next;
     if (mode == BattleMode::Automatic) {
         separateBlock();
-        message("Автобой: s + Enter — сохранить; m + Enter — по ходам; 0 + Enter — меню.");
+        message("Автобой: s + Enter — сохранить; m + Enter — перейти к запуску ходов вручную; 0 + Enter — в главное меню.");
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(550);
         while (!inputReady()) {
             if (std::chrono::steady_clock::now() >= deadline) return TurnAction::Next;
@@ -312,7 +312,7 @@ TurnAction ConsoleView::waitForTurn(BattleMode mode) {
     }
     while (true) {
         separateBlock();
-        message("Enter — следующий ход; a — автобой; s — сохранить; 0 — в главное меню.");
+        message("Enter — следующий ход; a + Enter — включить автобой; s + Enter — сохранить; 0 + Enter — в главное меню.");
         std::string command;
         if (!std::getline(in_, command) || command == "0") return TurnAction::Exit;
         if (command.empty()) return TurnAction::Next;
@@ -326,7 +326,7 @@ TurnAction ConsoleView::waitForTurn(BattleMode mode) {
 bool ConsoleView::handoff(int team) {
     clearDisplay();
     message("Передайте управление игроку " + std::to_string(team + 1) +
-            ". Предыдущий игрок должен отвернуться. Нажмите Enter; /back — Назад.");
+            ". Другой игрок не должен видеть набор армии. Нажмите Enter, чтобы продолжить; /back — назад.");
     std::string line;
     while (std::getline(in_, line)) {
         if (line=="/back") throw ViewBack{};
@@ -341,20 +341,20 @@ bool ConsoleView::handoff(int team) {
 
 void ConsoleView::showRecruitment(const RecruitmentSnapshot& snapshot) {
     separateBlock();
-    message("Закупка: " + snapshot.armies[snapshot.activeTeam].name +
+    message("Набор армии: " + snapshot.armies[snapshot.activeTeam].name +
             " | бюджет " + std::to_string(snapshot.limit) +
             " | потрачено " + std::to_string(snapshot.spent) +
             " | осталось " + std::to_string(snapshot.remaining));
     separateBlock();
     const auto rows = armyRows(snapshot.armies[snapshot.activeTeam], true);
-    if (rows.empty()) message("Строй пуст.");
+    if (rows.empty()) message("В армии пока нет бойцов.");
     else printTable(*this, rows, columnWidths(rows));
     separateBlock();
     Table offers;
     for (const auto& offer : snapshot.offers) {
         std::vector<std::string> cells{unitKindName(offer.kind),
-            "цена " + std::to_string(offer.cost), "hp " + std::to_string(offer.hp),
-            "атака " + std::to_string(offer.melee), "защита " + std::to_string(offer.defense)};
+            "Стоимость " + std::to_string(offer.cost), "Здоровье " + std::to_string(offer.hp),
+            "Атака " + std::to_string(offer.melee), "Защита " + std::to_string(offer.defense)};
         const auto special = splitCells(specialActionDescription(offer.kind, offer.ranged, offer.range));
         cells.insert(cells.end(), special.begin(), special.end());
         offers.push_back(std::move(cells));

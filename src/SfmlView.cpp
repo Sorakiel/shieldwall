@@ -85,8 +85,8 @@ struct SfmlView::Impl {
         append(text, team);
     }
     void notice(const std::string& text) {
-        if (text.rfind("Набор армии:", 0) == 0 || text == "Выберите управление ходами." ||
-            text == "Как игроки набирают армии?")
+        if (text.rfind("Набор армии:", 0) == 0 || text.rfind("Управление ходами:", 0) == 0 ||
+            text.rfind("Видимость армий при наборе:", 0) == 0)
             return;
         state.notices.push_back(text);
         if (state.notices.size() > 4)
@@ -156,7 +156,7 @@ struct SfmlView::Impl {
                     if (state.selectAll)
                         textInput.clear();
                     state.selectAll = false;
-                    state.error = textInput.append(entered->unicode) ? "" : "Имя слишком длинное.";
+                    state.error = textInput.append(entered->unicode) ? "" : "Имя слишком длинное. Сократите его.";
                 }
                 if (state.enteringNumber && entered->unicode >= U'0' && entered->unicode <= U'9') {
                     if (state.selectAll)

@@ -73,10 +73,10 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             const std::string argument = argv[i];
             if (argument == "--help") {
-                std::cout << "Shieldwall: закупка, бой по ходам, автосохранение\n"
+                std::cout << "Shieldwall: набор армий, пошаговый бой, автосохранение\n"
                           << "shieldwall [--console] [путь к data/units.txt]\n"
                           << "shieldwall --demo-log   — пример журнала в консоли\n"
-                          << "shieldwall --demo-view  — пример графического вида и журнала\n";
+                          << "shieldwall --demo-view  — пример экрана боя и журнала\n";
                 return 0;
             }
             if (argument == "--console") console = true;
@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
             Army a = generator.generate(120, armyRng);
             Army b = generator.generate(120, armyRng);
             ui.showArmies(a, b);
-            ui.message("Демонстрация вида: армии и события показаны как отдельные примеры.");
+            ui.message("Демонстрация интерфейса: показаны примеры армий и событий боя.");
             ui.showEvents(demoEvents(), logRng);
             ui.choose({{0, "Выход"}});
         } else {

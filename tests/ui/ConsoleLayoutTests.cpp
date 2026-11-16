@@ -120,7 +120,7 @@ void testRecruitment() {
     ConsoleView emptyView(none, empty);
     frame.armies[0].units.clear();
     emptyView.showRecruitment(frame);
-    CHECK(empty.str().find("\n\nСтрой пуст.\n\n|") != std::string::npos);
+    CHECK(empty.str().find("\n\nВ армии пока нет бойцов.\n\n|") != std::string::npos);
 }
 
 void testArmies() {
@@ -139,7 +139,7 @@ void testArmies() {
     Rows combined = rows[0];
     combined.insert(combined.end(), rows[1].begin(), rows[1].end());
     checkTable(combined);
-    CHECK(output.str().find("hp 3/200") != std::string::npos);
+    CHECK(output.str().find("Здоровье 3/200") != std::string::npos);
     CHECK(output.str().find("|\n\nКрасные") != std::string::npos);
     CHECK(output.str().find("|\n\nСобытия хода.") != std::string::npos);
     CHECK(output.str().find("\n\n\n") == std::string::npos);
@@ -259,8 +259,8 @@ void testColoredArmyBlocks() {
     const auto blue = text.substr(blueStart, blueEnd - blueStart);
     const auto red = text.substr(redStart, redEnd - redStart);
     CHECK(blue.find("Мирн") != std::string::npos && blue.find("Дарр") != std::string::npos);
-    CHECK(blue.find("hp 16/20") != std::string::npos && blue.find("цена 10") != std::string::npos);
-    CHECK(red.find("Брон") != std::string::npos && red.find("hp 44/45") != std::string::npos);
+    CHECK(blue.find("Здоровье 16/20") != std::string::npos && blue.find("Стоимость 10") != std::string::npos);
+    CHECK(red.find("Брон") != std::string::npos && red.find("Здоровье 44/45") != std::string::npos);
     CHECK(text.find("Нейтральное сообщение") > redEnd);
     auto stripped = text;
     for (const auto code : {"\033[94m", "\033[91m", "\033[0m"}) {
@@ -273,7 +273,7 @@ void testColoredArmyBlocks() {
     std::ostringstream empty;
     ConsoleView emptyView(input, empty, ConsoleColorMode::Always);
     emptyView.showArmies(frame);
-    CHECK(empty.str().find("Строй пуст.\n\033[0m") != std::string::npos);
+    CHECK(empty.str().find("В армии пока нет бойцов.\n\033[0m") != std::string::npos);
 }
 
 void testShortcutGestures() {
