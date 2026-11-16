@@ -217,7 +217,7 @@ namespace {
             event.buff = "Shield";
             const auto text = EventFormatter::format(event, rng);
             CHECK(text.find("Actor") != std::string::npos && text.find("Target") != std::string::npos);
-            if (type == EventType::Heal) CHECK(text.find("7 hp") != std::string::npos);
+            if (type == EventType::Heal) CHECK(text.find("восстановлено здоровья: 7") != std::string::npos);
             if (type == EventType::Buff) CHECK(text.find("Shield") != std::string::npos);
         }
     }

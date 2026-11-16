@@ -16,42 +16,42 @@ std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng, 
         teamName(event.team) + "] ";
     const std::string actor = "«" + event.actor + "»";
     const std::string target = "«" + event.target + "»";
-    const std::string damage = " — " + std::to_string(event.damage) +
-        " урона, осталось " + std::to_string(event.hpLeft) + " hp.";
+    const std::string damage = " — урон: " + std::to_string(event.damage) +
+        ", здоровье цели: " + std::to_string(event.hpLeft) + ".";
 
     switch (event.type) {
     case EventType::Melee:
         return prefix + actor + (alternate ? " наносит удар по " : " атакует в ближнем бою ") +
             target + damage;
     case EventType::Shot:
-        return prefix + actor + (alternate ? " пускает стрелу в " : " поражает стрелой ") +
+        return prefix + actor + (alternate ? " стреляет в " : " атакует выстрелом ") +
             target + damage;
     case EventType::Miss:
-        return prefix + actor + (alternate ? " пропускает атаку." : " не наносит удара.");
+        return prefix + actor + (alternate ? " пропускает атаку." : " не может атаковать в этом действии.");
     case EventType::OutOfRange:
-        return prefix + actor + (alternate ? " не видит цели за спинами своих: не хватает дальности." :
-            " не стреляет: цель вне дальности.");
+        return prefix + actor + (alternate ? " не стреляет: недостаточно дальности." :
+            " пропускает выстрел: не хватает дальности.");
     case EventType::Death:
-        return prefix + actor + (alternate ? " падает замертво; место освободится в конце хода." :
-            " погибает, но остаётся в строю до уборки.");
+        return prefix + actor + (alternate ? " погибает. Боец будет удалён из строя в конце хода." :
+            " погибает и будет удалён из строя в конце хода.");
     case EventType::Promote:
-        return prefix + (alternate ? "Поле расчищено: " : "После уборки ") + actor +
-            (alternate ? " выходит в первый ряд." : " занимает первое место в строю.");
+        return prefix + actor + (alternate ? " становится первым бойцом в строю." :
+            " занимает первую позицию в строю.");
     case EventType::BattleEnd:
-        if (event.team == -2) return prefix + "Бой окончен. Ничья.";
-        return prefix + (alternate ? "Бой окончен. Победили " : "Победа за командой ") +
+        if (event.team == -2) return prefix + "Бой завершён. Ничья.";
+        return prefix + (alternate ? "Бой завершён. Победили " : "Победила команда ") +
             teamName(event.team) + ".";
     case EventType::Clone:
-        return prefix + actor + (alternate ? " создаёт копию " : " успешно клонирует ") +
+        return prefix + actor + (alternate ? " создаёт копию бойца " : " клонирует бойца ") +
             target + ".";
     case EventType::CloneFailed:
-        return prefix + actor + (alternate ? " пытается клонировать " : " не смог создать копию ") +
-            target + (alternate ? ", но заклинание не удалось." : ".");
+        return prefix + actor + (alternate ? " не смог клонировать бойца " : " не смог создать копию бойца ") +
+            target + ".";
     case EventType::Heal:
         return prefix + actor + (alternate ? " лечит " : " восстанавливает здоровье ") +
-            target + " — восстановлено " + std::to_string(event.restored) + " hp.";
+            target + " — восстановлено здоровья: " + std::to_string(event.restored) + ".";
     case EventType::Buff:
-        return prefix + actor + (alternate ? " выдаёт " : " передаёт ") + target +
+        return prefix + actor + (alternate ? " выдаёт бойцу " : " передаёт бойцу ") + target +
             " бонус: " + event.buff + ".";
     }
     throw std::invalid_argument("Неизвестный тип события боя");

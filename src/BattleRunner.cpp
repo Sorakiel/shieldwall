@@ -50,7 +50,7 @@ RunResult BattleRunner::run(BattleEngine& engine, Army& a, Army& b, std::mt19937
         ++turn;
         if (onTurn)
             onTurn(turn);
-        ui_.message("Уборка завершена. Состояние строёв:");
+        ui_.message("Ход завершён. Состав армий:");
         ui_.setBattleProgress(turn, mode);
         ui_.showArmies(a, b);
     }
