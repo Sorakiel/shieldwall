@@ -24,20 +24,20 @@ const char* unitKindName(UnitKind kind) {
     case UnitKind::Mage: return "Маг";
     case UnitKind::Healer: return "Целитель";
     }
-    return "Юнит";
+    return "Боец";
 }
 
 std::string specialActionDescription(UnitKind kind, int power, int range) {
     switch (kind) {
     case UnitKind::Light:
-        return "Снаряжение: шанс 25% | тяжёлому соседу | 1 бонус на армию за ход";
-    case UnitKind::Heavy: return "Ближний бой";
+        return "Снаряжение: шанс 25% | тяжёлому соседу | до 1 бонуса на армию за ход";
+    case UnitKind::Heavy: return "Без особой способности";
     case UnitKind::Archer:
-        return "Выстрел " + std::to_string(power) + " | дальность " + std::to_string(range);
+        return "Выстрел: атака " + std::to_string(power) + " | дальность " + std::to_string(range) + " | не с первой позиции";
     case UnitKind::Mage:
-        return "Клонирование " + std::to_string(power) + "% | радиус " + std::to_string(range) + " | цели: лёгкие, лучники";
+        return "Клонирование: шанс " + std::to_string(power) + "% | радиус " + std::to_string(range) + "; свои лёгкие и лучники | не с первой позиции";
     case UnitKind::Healer:
-        return "Лечение " + std::to_string(power) + " HP | радиус " + std::to_string(range) + " | кроме мага";
+        return "Лечение: до " + std::to_string(power) + " здоровья | радиус " + std::to_string(range) + "; союзник, кроме мага | не с первой позиции";
     }
     return "";
 }

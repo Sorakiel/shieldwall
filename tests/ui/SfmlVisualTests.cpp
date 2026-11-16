@@ -68,12 +68,12 @@ int main(int argc, char** argv) {
         render("03-settings", s);
         navigation();
         State shared = s;
-        shared.choices[0].label = "Общий экран";
-        shared.choices[1].label = "Раздельный ввод";
+        shared.choices[0].label = "Открытый набор";
+        shared.choices[1].label = "Скрытый набор";
         render("23-shared-screen", shared);
         navigation();
         s.enteringNumber = true;
-        s.prompt = "Seed (например, 42): ";
+        s.prompt = "Seed для случайной генерации (например, 42): ";
         s.numberCancel = NumberCancel::Previous;
         s.input = "4294967295";
         s.selectAll = true;
@@ -108,8 +108,8 @@ int main(int argc, char** argv) {
                                 {UnitKind::Mage, 25, 14, 2, 60, 3, 0, false},
                                 {UnitKind::Healer, 22, 18, 2, 8, 3, 0, false}};
         s.choices = {
-            {1, "Случайный набор"}, {2, "Ручная закупка"},     {3, "Сжатый набор"},
-            {20, "Убрать бойца"},   {21, "Переставить"},       {uiAction::ClearArmy, "Очистить армию"},
+            {1, "Случайный набор"}, {2, "Ручной набор"},     {3, "Набор по цене"},
+            {20, "Удалить бойца"},   {21, "Переместить бойца"},       {uiAction::ClearArmy, "Очистить армию"},
             {30, "Армия готова"},   {uiAction::Back, "Назад"}, {0, "В главное меню"}};
         render("05-army-methods", s);
         navigation();
@@ -161,8 +161,8 @@ int main(int argc, char** argv) {
                      {3, "Купить: Лучник", false},
                      {4, "Купить: Маг", false},
                      {5, "Купить: Целитель", false},
-                     {20, "Убрать бойца"},
-                     {21, "Переставить"},
+                     {20, "Удалить бойца"},
+                     {21, "Переместить бойца"},
                      {uiAction::ClearArmy, "Очистить армию"},
                      {30, "Армия готова"},
                      {uiAction::Back, "Назад"},
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
         budget.stage = ViewStage::Setup;
         budget.enteringNumber = true;
         budget.numberCancel = NumberCancel::Previous;
-        budget.prompt = "Лимит цены каждой армии: ";
+        budget.prompt = "Бюджет каждой армии: ";
         budget.input = "120";
         budget.choices.clear();
         render("22-budget-page", budget);
@@ -226,8 +226,8 @@ int main(int argc, char** argv) {
         };
         s.log.startTurn(
             17, [&](const std::u32string& row) { return scene.textWidth(sf::String(row)); }, LogWidth);
-        add("«Брон [конь] [щит] [шлем] [копьё]» наносит удар по «Мирн» — 7 урона, осталось 13 hp.", 0);
-        add("«Тиль» восстанавливает здоровье «Брон» — восстановлено 8 hp.", 1);
+        add("«Брон [конь] [щит] [шлем] [копьё]» наносит удар по «Мирн» — урон: 7, здоровье цели: 13.", 0);
+        add("«Тиль» восстанавливает здоровье «Брон» — восстановлено здоровья: 8.", 1);
         render("08-battle", s);
         const auto battleState = s;
         presentation::Playback playback;
@@ -278,13 +278,13 @@ int main(int argc, char** argv) {
         s.choices.clear();
         for (int i = 0; i < 6; ++i)
             s.choices.push_back({static_cast<std::uint32_t>(i + 1),
-                                 "Поход " + std::to_string(i + 1) +
-                                     "\nБой, ход 17 | лимит 120 | seed 42 | 31.10.2026 18:00"});
+                                 "Сохранение " + std::to_string(i + 1) +
+                                     "\nБой, ход 17 | бюджет 120 | seed 42 | 31.10.2026 18:00"});
         s.choices.insert(
             s.choices.end(),
-            {{10, "Назад по страницам", false}, {11, "Далее"}, {12, "Удалить сохранения"}, {0, "Отмена"}});
+            {{10, "Предыдущая страница", false}, {11, "Следующая страница"}, {12, "Удаление сохранений"}, {0, "Отмена"}});
         render("12-archive", s);
-        s.choices[0].label = std::string(64, 'W') + "\nПовреждён: " + std::string(1500, 'W');
+        s.choices[0].label = std::string(64, 'W') + "\nСохранение повреждено: " + std::string(1500, 'W');
         s.choices[0].enabled = false;
         render("15-archive-long-name", s);
         State paged = battleState;
@@ -300,8 +300,8 @@ int main(int argc, char** argv) {
         paged.recruitment.spent = 2147483637;
         paged.recruitment.remaining = 10;
         paged.recruitment.offers = {{UnitKind::Light, 10, 20, 7, 0, 0, 1, true}};
-        paged.choices = {{1, "Купить: Лёгкий"}, {20, "Убрать бойца"},
-                         {21, "Переставить"},   {uiAction::ClearArmy, "Очистить армию"},
+        paged.choices = {{1, "Купить: Лёгкий"}, {20, "Удалить бойца"},
+                         {21, "Переместить бойца"},   {uiAction::ClearArmy, "Очистить армию"},
                          {30, "Армия готова"},  {uiAction::Back, "Назад"},
                          {0, "В главное меню"}};
         render("17-large-budget", paged);

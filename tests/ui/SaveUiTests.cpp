@@ -180,7 +180,7 @@ void testNamedSaveDuringBattle(const UnitCatalog& catalog) {
             loaded.actions = {2, 2, 2, 0};
             loaded.turns = {TurnAction::Exit};
             run(loaded, catalog, dir);
-            CHECK(loaded.hasMessage("Сыграно ходов: 2"));
+            CHECK(loaded.hasMessage("Завершено ходов: 2"));
             CHECK(loaded.progress == std::vector<int>{2});
             CHECK(contents(dir.named(name)) == savedContents);
         }
@@ -209,7 +209,7 @@ void testBattleSaveDefaultRetryAndCancel(const UnitCatalog& catalog) {
         view.texts = {std::string("../x"), std::string("AUTOSAVE"), std::string("")};
         observeAutosave(view, dir);
         run(view, catalog, dir);
-        CHECK(view.hasMessage("Не сохранено:"));
+        CHECK(view.hasMessage("Не удалось сохранить игру:"));
         CHECK(view.texts.empty());
         CHECK(fs::exists(dir.named("save-1")));
         CHECK(!fs::exists(dir.path.parent_path() / "x.txt"));
@@ -279,13 +279,13 @@ void testLoadSecondAndDamaged(const UnitCatalog& catalog) {
     ScriptView view;
     view.actions = {2, 2, 2, 0}; view.turns = {TurnAction::Exit};
     run(view, catalog, dir);
-    CHECK(view.hasMessage("Сыграно ходов: 2"));
+    CHECK(view.hasMessage("Завершено ходов: 2"));
     CHECK(view.progress == std::vector<int>{2});
     bool disabled = false, metadata = false;
     for (const auto& menu : view.menus) for (const auto& choice : menu) {
         if (choice.label.find("broken") != std::string::npos) disabled = !choice.enabled;
         if (choice.label.find("second") != std::string::npos) metadata =
-            choice.label.find("Бой, ход 2 | лимит 70 | seed 42 | ") != std::string::npos;
+            choice.label.find("Бой, ход 2 | бюджет 70 | seed 42 | ") != std::string::npos;
     }
     CHECK(disabled && metadata);
     CHECK(contents(dir.named("broken")) == "damaged\n");
@@ -329,7 +329,7 @@ void testReplacingAndCancellingParty(const UnitCatalog& catalog) {
         run(view, catalog, dir);
         CHECK(view.actions.empty());
         CHECK(view.hasChoice("Заменить текущую партию"));
-        CHECK(view.hasMessage("Сыграно ходов: 2") == (confirm == 1));
+        CHECK(view.hasMessage("Завершено ходов: 2") == (confirm == 1));
         CHECK(SaveService::loadFromFile(dir.autosave()).seed == 42);
     }
     {

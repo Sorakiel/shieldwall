@@ -115,7 +115,7 @@ namespace {
         const auto result = reset.find("Итог: победили");
         CHECK(result != std::string::npos);
         CHECK(reset.find("Итог: победили", result + 1) != std::string::npos);
-        CHECK(contains(reset, "Лимит: 10, seed: 0"));
+        CHECK(contains(reset, "Бюджет каждой армии: 10, seed: 0"));
     }
 
     void testRunnerUsesEngineAndLeavesInputAlone() {

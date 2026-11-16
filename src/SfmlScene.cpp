@@ -47,27 +47,27 @@ bool confirmation(const State& s) {
 std::string actionName(EventType t) {
     switch (t) {
     case EventType::Melee:
-        return "Ближний удар";
+        return "Атака в ближнем бою";
     case EventType::Shot:
         return "Выстрел";
     case EventType::Heal:
-        return "Исцеление";
+        return "Лечение";
     case EventType::Clone:
-        return "Сотворение копии";
+        return "Клонирование";
     case EventType::CloneFailed:
-        return "Заклинание рассеялось";
+        return "Клонирование не удалось";
     case EventType::Buff:
-        return "Боевое снаряжение";
+        return "Выдача снаряжения";
     case EventType::Death:
-        return "Воин пал";
+        return "Боец погиб";
     case EventType::Promote:
-        return "Строй смыкается";
+        return "Смена первого бойца";
     case EventType::BattleEnd:
-        return "Сражение окончено";
+        return "Бой завершён";
     case EventType::Miss:
-        return "Пропуск действия";
+        return "Атака пропущена";
     case EventType::OutOfRange:
-        return "Цель вне досягаемости";
+        return "Недостаточно дальности";
     }
     return "Действие";
 }
@@ -333,7 +333,7 @@ void Scene::notice(const State& s, float x, float y, float width) {
         return;
     const auto& v = s.notices.back();
     if (contains(v, "Shieldwall —") || contains(v, "Набор армии:") ||
-        contains(v, "Выберите управление ходами") || contains(v, "Как игроки набирают"))
+        contains(v, "Управление ходами:") || contains(v, "Видимость армий при наборе:"))
         return;
     box(x, y, width, 50, alpha(raised, .85f), 9, border);
     disc(x + 20, y + 24, 3, gold);
@@ -355,7 +355,7 @@ void Scene::menu(const State& s) {
 void Scene::settings(const State& s) {
     header();
     const bool shared = std::any_of(s.choices.begin(), s.choices.end(),
-                                    [](const MenuChoice& c) { return c.label == "Общий экран"; });
+                                    [](const MenuChoice& c) { return c.label == "Открытый набор"; });
     const bool seed = contains(s.prompt, "Seed");
     label("НАСТРОЙКИ ПАРТИИ", 104, 156, 12, gold);
     label(s.enteringNumber ? (seed ? "Seed партии" : "Бюджет армий")
@@ -407,8 +407,8 @@ void Scene::settings(const State& s) {
                          : (i == 0 ? "I  БЕЗ ПОДТВЕРЖДЕНИЯ" : "II  ПО ПОДТВЕРЖДЕНИЮ"),
                   x + 30, 428, 12, gold);
             label(c.label, x + 30, 465, 37, paper, true);
-            paragraph(shared ? (i == 0 ? "Оба состава доступны на одном экране."
-                                       : "Отдельный ввод для каждого игрока.")
+            paragraph(shared ? (i == 0 ? "Оба игрока видят армии во время набора."
+                                       : "Игроки набирают армии по очереди. Состав соперника скрыт до начала боя.")
                              : (i == 0 ? "Ходы следуют друг за другом. Анимации показывают каждое действие."
                                        : "Следующий ход начинается только по вашей команде."),
                       x + 30, 523, 510, 15, muted);
@@ -507,7 +507,7 @@ void Scene::recruitment(const State& s) {
                 const auto value = fit(std::to_string(stats[row].second), w - 130, 16);
                 text(value, x + w - 24 - textWidth(value, 16), y - 1, 16, gold);
             }
-            label("УМЕНИЕ", x + 18, 400, 10, muted);
+            label("СПОСОБНОСТЬ", x + 18, 400, 10, muted);
             auto desc = specialActionDescription(o.kind, o.ranged, o.range);
             std::replace(desc.begin(), desc.end(), '|', '\n');
             paragraph(desc, x + 18, 418, w - 36, 11, typeColor(o.kind), 3);
@@ -525,7 +525,7 @@ void Scene::recruitment(const State& s) {
         actions(s, 50, 800, 1340, 4);
     }
     const auto& a = s.battle.armies[r.activeTeam];
-    label("Ваш строй / " + unitCount(a.units.size()), 50, 550, 14, color);
+    label("Состав армии / " + unitCount(a.units.size()), 50, 550, 14, color);
     const auto offset =
         std::min(s.offsets[r.activeTeam], a.units.empty() ? 0 : ((a.units.size() - 1) / 8) * 8);
     auto card = [&](const UnitSnapshot& unit, std::size_t index, float x, float y, bool ghost = false) {
@@ -576,7 +576,7 @@ void Scene::recruitment(const State& s) {
         }
         button("<", 1280, 596, 48, 200 + r.activeTeam * 2, offset > 0, false, 42);
         button(">", 1342, 596, 48, 201 + r.activeTeam * 2, offset + 8 < a.units.size(), false, 42);
-        label("Страницы строя", 1280, 653, 10, muted);
+        label("Другие бойцы", 1280, 653, 10, muted);
     }
     if (s.drag && s.drag->active && s.drag->from < a.units.size()) {
         const auto& d = *s.drag;
@@ -594,7 +594,7 @@ void Scene::recruitment(const State& s) {
         const auto position = dragPosition(d);
         card(a.units[d.from], d.from, position.x, position.y, true);
     }
-    label("Перетаскивайте карточки для перестановки. × — убрать бойца. Колесо мыши — страницы строя.", 50,
+    label("Перетаскивайте бойцов, чтобы изменить порядок. × — удалить бойца. Колесо мыши — прокрутить состав.", 50,
           739, 12, muted);
     notice(s, 825, 724, 565);
 }
@@ -625,7 +625,7 @@ void Scene::army(const State& s, int team) {
           215, 11, muted);
     const auto offset = s.offsets[team];
     if (a.units.empty())
-        label("Строй пал", left + 120, 418, 30, muted, true);
+        label("Нет живых бойцов", left + 120, 418, 30, muted, true);
     for (auto i = offset; i < std::min(a.units.size(), offset + PageUnits); ++i) {
         const auto& u = a.units[i];
         const auto center = slotCenter({team, static_cast<int>(i)}, s);
@@ -716,7 +716,7 @@ void Scene::field(const State& s) {
                               : gold,
               true);
     } else
-        label(s.stage == ViewStage::Battle ? "ПЕРЕДНИЙ КРАЙ" : "АРМИИ ГОТОВЫ К БОЮ",
+        label(s.stage == ViewStage::Battle ? "ПЕРВЫЕ БОЙЦЫ" : "АРМИИ ГОТОВЫ К БОЮ",
               s.stage == ViewStage::Battle ? 469.f : 370.f, 251, 10, gold);
     if (s.effect)
         effects(s);
@@ -729,11 +729,11 @@ void Scene::field(const State& s) {
                true, false, FooterHeight);
         button("Сохранить", 32 + 2 * step, 778, FooterButtonWidth, Save, true, false, FooterHeight);
         button("В главное меню", 32 + 3 * step, 778, FooterButtonWidth, 0, true, false, FooterHeight);
-        label("Enter / пробел — ход     A — режим     S — сохранить", 34, 851, 11, muted);
-        button(s.speed == .5f   ? "Темп ×0.5"
-               : s.speed == 1.f ? "Темп ×1"
-                                : "Темп ×2",
-               818, 105, 111, Speed, true, false, 28);
+        label("Enter / пробел — следующий ход     A — автобой     S — сохранить", 34, 851, 11, muted);
+        button(s.speed == .5f   ? "Скорость ×0.5"
+               : s.speed == 1.f ? "Скорость ×1"
+                                : "Скорость ×2",
+               786, 105, 143, Speed, true, false, 28);
         if (s.playing)
             button(s.paused ? "Продолжить" : "Пауза", 941, 105, 111, Pause, true, false, 28);
     } else
@@ -761,7 +761,7 @@ void Scene::journal(const State& s) {
         box(1394, 249, 2, 500, raised, 1);
         box(1394, 249 + (500 - thumb) * first / (total - LogLines), 2, thumb, gold, 1);
     }
-    label(s.logOffset == 0 ? "Колесо мыши — история событий" : "Просмотр предыдущих событий", 1096, 793, 10,
+    label(s.logOffset == 0 ? "Колесо мыши — прокрутка журнала" : "Просмотр предыдущих событий", 1096, 793, 10,
           muted);
 }
 void Scene::effects(const State& s) {
@@ -856,7 +856,7 @@ void Scene::effects(const State& s) {
 }
 void Scene::archive(const State& s) {
     const bool deleting = std::any_of(s.choices.begin(), s.choices.end(),
-                                      [](const MenuChoice& c) { return c.label == "К загрузке"; });
+                                      [](const MenuChoice& c) { return c.label == "К списку сохранений"; });
     header();
     label(deleting ? "Удаление сохранений" : "Сохранения", 80, 126, 49, paper, true);
     std::size_t row = 0;
@@ -889,9 +889,9 @@ void Scene::modal(const State& s) {
     line({390, 235}, {1050, 235}, gold, 2);
     const bool entry = s.enteringNumber || s.enteringText;
     label(entry ? (s.enteringText                           ? "Сохранить игру"
-                   : s.numberCancel == NumberCancel::Dialog ? "Изменить строй"
+                   : s.numberCancel == NumberCancel::Dialog ? "Изменение состава армии"
                                                             : "Настройки партии")
-                : "Подтвердите решение",
+                : "Подтверждение действия",
           396, 265, 38, paper, true);
     if (entry) {
         text(fit(s.prompt, 640, 16), 398, 330, 16, muted);
@@ -906,7 +906,7 @@ void Scene::modal(const State& s) {
                       ? (s.enteringText ? (s.playing ? "Сохранится состояние после хода " +
                                                            std::to_string(std::max(0, s.turn - 1)) +
                                                            ". Текущий ход в сохранение не войдёт."
-                                                     : "Пустое поле — предложенное имя. Enter — сохранить.")
+                                                     : "Оставьте поле пустым, чтобы использовать предложенное имя. Enter — сохранить.")
                                         : "Введите целое число. Enter — продолжить.")
                       : s.error,
                   398, 461, 630, 13, s.error.empty() ? muted : red);
@@ -943,8 +943,8 @@ void Scene::draw(sf::RenderTarget& target, const State& s, sf::Vector2f mouse) {
         crest(656, 205, 126, teamColor(s.handoff));
         label("Передача управления", 414, 388, 45, paper, true);
         label("Игрок " + std::to_string(s.handoff + 1), 642, 461, 28, teamColor(s.handoff), true);
-        label("Предыдущий игрок должен отвернуться от экрана.", 502, 526, 16, muted);
-        button("Я готов — продолжить", 468, 600, FooterButtonWidth, Submit, true, false, FooterHeight);
+        label("Другой игрок не должен видеть, как вы набираете армию.", 502, 526, 16, muted);
+        button("Начать набор армии", 468, 600, FooterButtonWidth, Submit, true, false, FooterHeight);
         button("Назад", 468 + FooterButtonWidth + FooterGap, 600, FooterButtonWidth,
                static_cast<int>(uiAction::Back), true, false, FooterHeight);
         return;

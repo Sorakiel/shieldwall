@@ -33,10 +33,10 @@ std::string saveLabel(const SaveSummary& summary) {
                                  ? "Автосохранение"
                                  : std::filesystem::path(summary.name).u8string();
     if (!summary.valid)
-        return name + "\nПовреждён: " + summary.error;
-    const std::string phase = summary.phase == SavePhase::Recruitment ? "Закупка"
+        return name + "\nСохранение повреждено: " + summary.error;
+    const std::string phase = summary.phase == SavePhase::Recruitment ? "Набор армии"
                               : summary.phase == SavePhase::Battle    ? "Бой"
-                                                                      : "Итог";
+                                                                      : "Бой завершён";
     std::tm date{};
 #ifdef _WIN32
     const bool hasDate = localtime_s(&date, &summary.modified) == 0;
@@ -45,7 +45,7 @@ std::string saveLabel(const SaveSummary& summary) {
 #endif
     std::ostringstream text;
     text << name << '\n'
-         << phase << ", ход " << summary.turn << " | лимит " << summary.costLimit << " | seed "
+         << phase << ", ход " << summary.turn << " | бюджет " << summary.costLimit << " | seed "
          << summary.seed << " | ";
     if (hasDate)
         text << std::put_time(&date, "%d.%m.%Y %H:%M");
@@ -188,7 +188,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         try {
             store(autosavePath_, phase, turn);
         } catch (const DataError& error) {
-            ui_.message(std::string("Автосохранение: ") + error.what());
+            ui_.message(std::string("Не удалось выполнить автосохранение: ") + error.what());
         } catch (const std::filesystem::filesystem_error& error) {
             ui_.message(std::string("Не удалось создать папку автосохранения: ") + error.what());
         }
@@ -223,9 +223,9 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 ui_.message("Сохранено: " + name + " (ход " + std::to_string(turn) + ").");
                 return;
             } catch (const DataError& error) {
-                ui_.message(std::string("Не сохранено: ") + error.what());
+                ui_.message(std::string("Не удалось сохранить игру: ") + error.what());
             } catch (const std::filesystem::filesystem_error& error) {
-                ui_.message(std::string("Не сохранено: ") + error.what());
+                ui_.message(std::string("Не удалось сохранить игру: ") + error.what());
                 return;
             }
         }
@@ -256,9 +256,9 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 if (!saves[index].valid)
                     ui_.message(label);
             }
-            choices.push_back({previousPage, "Назад по страницам", page > 0});
-            choices.push_back({nextPage, "Далее", end < saves.size()});
-            choices.push_back({toggleDelete, deleting ? "К загрузке" : "Удалить сохранения"});
+            choices.push_back({previousPage, "Предыдущая страница", page > 0});
+            choices.push_back({nextPage, "Следующая страница", end < saves.size()});
+            choices.push_back({toggleDelete, deleting ? "К списку сохранений" : "Удаление сохранений"});
             choices.push_back({0, "Назад", true, true});
             const auto action = ui_.choose(choices);
             if (!action || *action == 0)
@@ -294,7 +294,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 }
                 std::error_code error;
                 const bool removed = std::filesystem::remove(file, error);
-                ui_.message(error     ? "Не удалось удалить: " + error.message()
+                ui_.message(error     ? "Не удалось удалить сохранение: " + error.message()
                             : removed ? "Сохранение удалено."
                                       : "Сохранение уже отсутствует.");
             }
@@ -306,7 +306,8 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         checkpoint(SavePhase::Recruitment, 0);
     };
     auto selectMode = [&] {
-        ui_.message("Выберите управление ходами.");
+        ui_.message("Управление ходами: автобой запускает ходы автоматически; "
+                    "«По одному ходу» — после вашей команды.");
         const auto choice = ui_.choose({{1, "Автобой"},
                                         {2, "По одному ходу"},
                                         {uiAction::Back, "Назад", true, true},
@@ -316,9 +317,10 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         return choice;
     };
     auto selectInput = [&] {
-        ui_.message("Как игроки набирают армии?");
-        const auto choice = ui_.choose({{1, "Общий экран"},
-                                        {2, "Раздельный ввод"},
+        ui_.message("Видимость армий при наборе: открытый набор — составы видны обоим игрокам; "
+                    "скрытый — игроки набирают армии по очереди и не видят состав соперника.");
+        const auto choice = ui_.choose({{1, "Открытый набор"},
+                                        {2, "Скрытый набор"},
                                         {uiAction::Back, "Назад", true, true},
                                         {0, "В главное меню"}});
         if (choice && (*choice == 1 || *choice == 2))
@@ -374,10 +376,10 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 try {
                     if (setupStep < 2) {
                         const auto value =
-                            setupStep == 0 ? ui_.readSetupNumber("Лимит цены каждой армии: ", minBudget,
+                            setupStep == 0 ? ui_.readSetupNumber("Бюджет каждой армии: ", minBudget,
                                                                  std::numeric_limits<int>::max(),
                                                                  NumberCancel::Previous, setupBudget)
-                                           : ui_.readSetupNumber("Seed (например, 42): ", 0,
+                                           : ui_.readSetupNumber("Seed для случайной генерации (например, 42): ", 0,
                                                                  std::numeric_limits<std::uint32_t>::max(),
                                                                  NumberCancel::Previous, setupSeed);
                         if (!value) {
@@ -469,15 +471,15 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             std::vector<MenuChoice> choices;
             if (recruitScreen == RecruitmentScreen::Methods) {
                 ui_.message(std::string("Набор армии: ") + EventFormatter::teamName(team));
-                choices = {{1, "Случайный набор"}, {2, "Ручная закупка"}, {3, "Сжатый набор"}};
+                choices = {{1, "Случайный набор"}, {2, "Ручной набор"}, {3, "Набор по цене"}};
             } else {
                 for (const auto& offer : frame.offers)
                     choices.push_back({buyAction(offer.kind),
                                        std::string("Купить: ") + unitKindName(offer.kind), offer.enabled});
             }
             // Console actions; SFML exposes these edits directly on the cards.
-            choices.push_back({20, "Убрать бойца", hasUnits});
-            choices.push_back({21, "Переставить", builders[team]->units().size() > 1});
+            choices.push_back({20, "Удалить бойца", hasUnits});
+            choices.push_back({21, "Переместить бойца", builders[team]->units().size() > 1});
             choices.push_back({uiAction::ClearArmy, "Очистить армию", hasUnits});
             choices.push_back({30, "Армия готова", hasUnits});
             choices.push_back({uiAction::Back, "Назад", true, true});
@@ -509,7 +511,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             }
             if (*choice == 30) {
                 if (!hasUnits) {
-                    ui_.message("Сначала наймите хотя бы одного бойца.");
+                    ui_.message("В армии должен быть хотя бы один боец. Выберите автоматический или ручной набор.");
                     break;
                 }
                 if (team == 0) {
@@ -549,14 +551,14 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                     if (size == 0)
                         break;
                     const auto from =
-                        ui_.readNumberCancelable("Позиция бойца (с 1): ", 1, size, NumberCancel::Dialog);
+                        ui_.readNumberCancelable("Номер бойца в составе армии: ", 1, size, NumberCancel::Dialog);
                     if (!from)
                         break;
                     if (*choice == 20)
                         outcome = builders[team]->remove(*from - 1);
                     else {
                         const auto to =
-                            ui_.readNumberCancelable("Новая позиция (с 1): ", 1, size, NumberCancel::Dialog);
+                            ui_.readNumberCancelable("Новый номер бойца в составе армии: ", 1, size, NumberCancel::Dialog);
                         if (!to)
                             break;
                         outcome = builders[team]->move(*from - 1, *to - 1);
@@ -571,7 +573,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
         }
         case State::Ready: {
             ui_.setStage(ViewStage::Recruitment);
-            ui_.message("Лимит: " + std::to_string(data.costLimit) + ", seed: " + std::to_string(data.seed) +
+            ui_.message("Бюджет каждой армии: " + std::to_string(data.costLimit) + ", seed: " + std::to_string(data.seed) +
                         ". Обе армии готовы.");
             ui_.showArmies(*session.armyA, *session.armyB);
             showPendingMessages();
@@ -657,12 +659,12 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 logRng.seed(data.seed);
                 resultShown = false;
                 resultSaved = false;
-                ui_.message("Сохранение загружено. Сыграно ходов: " + std::to_string(data.turn));
+                ui_.message("Сохранение загружено. Завершено ходов: " + std::to_string(data.turn) + ".");
             } catch (const DataError& error) {
-                pendingMessages.push_back(std::string("Загрузка: ") + error.what());
+                pendingMessages.push_back(std::string("Не удалось загрузить сохранение: ") + error.what());
                 state = loadReturn;
             } catch (const std::filesystem::filesystem_error& error) {
-                pendingMessages.push_back(std::string("Загрузка: ") + error.what());
+                pendingMessages.push_back(std::string("Не удалось загрузить сохранение: ") + error.what());
                 state = loadReturn;
             }
             break;
