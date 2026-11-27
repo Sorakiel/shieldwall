@@ -16,4 +16,7 @@ struct BattleEvent {
     int         hpLeft = 0;
     int         restored = 0;    // восстановлено hp (Heal)
     std::string buff;            // название выданного бонуса (Buff)
+    int sourceIndex = -1;        // позиция цели до вставки клона
+    std::string cloneName;
+    int cloneHp = -1;            // здоровье копии в момент создания
 };
