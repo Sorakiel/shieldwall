@@ -7,6 +7,7 @@
 #include "UnitDecorator.h"
 #include "CloneIdentity.h"
 #include "CloneEventData.h"
+#include "BattleMotion.h"
 
 namespace presentation {
 struct Slot {
@@ -50,6 +51,14 @@ struct Step {
     UnitKind subjectKind = UnitKind::Light;
     int fromIndex = -1;
     std::optional<UnitSnapshot> clone;
+    std::array<std::vector<std::size_t>, 2> previousIndices;
+    bool visible = true;
+    bool movesFormation() const {
+        for (const auto& army : previousIndices)
+            for (std::size_t i = 0; i < army.size(); ++i)
+                if (army[i] != i) return true;
+        return false;
+    }
     float elapsed = 0.f;
     bool committed = false;
     float progress() const {
@@ -70,6 +79,16 @@ struct Step {
         return false;
     }
 };
+
+inline bool defeated(const UnitSnapshot& unit) {
+    return unit.defeated || (unit.detailsKnown && unit.hp <= 0);
+}
+inline float formationIndex(const Step& step, int team, std::size_t index) {
+    const auto& previous = step.previousIndices[team];
+    if (index >= previous.size()) return static_cast<float>(index);
+    return static_cast<float>(index) + (static_cast<float>(previous[index]) - index) *
+                                      (1 - smooth(step.progress()));
+}
 
 inline Slot actorSlot(const Step& step) {
     auto slot = step.actor;
@@ -108,12 +127,13 @@ inline void applyEquipment(UnitSnapshot& unit, const std::string& equipment) {
 class Playback {
     int turn_ = -1;
     std::array<Slot, 2> lastHit_{};
+    std::array<bool, 2> meleeDone_{};
     std::array<std::size_t, 2> shooters_{{1, 1}}, casters_{{1, 1}};
     static int find(const ArmySnapshot& army, const std::string& name, std::size_t start = 0,
                     int preferredHp = -1, std::optional<UnitKind> kind = {}) {
         int fallback = -1;
         for (auto i = start; i < army.units.size(); ++i) {
-            if (army.units[i].name != name || (kind && army.units[i].kind != *kind))
+            if (army.units[i].name != name || (kind && (army.units[i].kind != *kind || defeated(army.units[i]))))
                 continue;
             if (fallback < 0)
                 fallback = static_cast<int>(i);
@@ -127,8 +147,25 @@ public:
     void reset() {
         turn_ = -1;
         lastHit_ = {};
+        meleeDone_ = {};
         shooters_ = {{1, 1}};
         casters_ = {{1, 1}};
+    }
+    // Keep each survivor's old position, including deaths behind the front line.
+    static Step cleanup(BattleSnapshot& frame, int turn = 0) {
+        Step step;
+        step.event = {EventType::Promote, turn, -1};
+        for (int team = 0; team < 2; ++team) {
+            auto& units = frame.armies[team].units;
+            if (std::none_of(units.begin(), units.end(), defeated)) continue;
+            auto& previous = step.previousIndices[team];
+            for (std::size_t i = 0; i < units.size(); ++i)
+                if (!defeated(units[i])) previous.push_back(i);
+            units.erase(std::remove_if(units.begin(), units.end(), defeated), units.end());
+            frame.armies[team].totalCost = 0;
+            for (const auto& unit : units) frame.armies[team].totalCost += unit.cost;
+        }
+        return step;
     }
     template<class Event> Step begin(BattleSnapshot& frame, const Event& event) {
         if (turn_ != event.turn) {
@@ -137,18 +174,20 @@ public:
         }
         Step step;
         step.event = event;
+        step.visible = visibleBattleEvent(event.type);
         if (event.team < 0 || event.team > 1)
             return step;
         const auto team = event.team;
         if (event.type == EventType::Promote) {
             step.fromIndex = find(frame.armies[team], event.actor);
-            for (auto& army : frame.armies) {
-                army.units.erase(std::remove_if(army.units.begin(), army.units.end(),
-                                                [](const UnitSnapshot& unit) { return unit.hp <= 0; }),
-                                 army.units.end());
-            }
+            step.previousIndices = cleanup(frame, event.turn).previousIndices;
         }
-        const bool shot = event.type == EventType::Shot || event.type == EventType::OutOfRange;
+        const auto& own = frame.armies[team];
+        const bool frontMiss = event.type == EventType::Miss && !meleeDone_[team] &&
+                               !own.units.empty() && own.units.front().name == event.actor &&
+                               defeated(own.units.front());
+        const bool shot = event.type == EventType::Shot || event.type == EventType::OutOfRange ||
+                          (event.type == EventType::Miss && !frontMiss);
         const bool cast = event.type == EventType::Heal || event.type == EventType::Clone ||
                           event.type == EventType::CloneFailed;
         const auto start = shot ? shooters_[team] : cast ? casters_[team] : 0;
@@ -163,6 +202,8 @@ public:
                 actor = lastHit_[team].index;
         }
         step.actor = {team, actor};
+        if (event.type == EventType::Melee || frontMiss) meleeDone_[team] = true;
+        if (event.type == EventType::Miss && !frontMiss) step.visible = false;
         if (actor >= 0 && shot)
             shooters_[team] = static_cast<std::size_t>(actor + 1);
         if (actor >= 0 && cast)
@@ -175,7 +216,6 @@ public:
                                         enemy ? event.hpLeft + event.damage : -1)};
         if (event.type == EventType::Clone) {
             const auto data = cloneData(event);
-            const auto& own = frame.armies[team];
             if (data.sourceIndex >= 0 && static_cast<std::size_t>(data.sourceIndex) < own.units.size() &&
                 (!data.name.empty() || data.hp > 0))
                 step.target = {team, data.sourceIndex};
@@ -185,7 +225,7 @@ public:
                 for (std::size_t i = 0; i < own.units.size(); ++i) {
                     const auto& unit = own.units[i];
                     if (range > 0 && std::abs(static_cast<int>(i) - actor) > range) continue;
-                    if (unit.name != event.target || (unit.detailsKnown && unit.hp <= 0) ||
+                    if (unit.name != event.target || defeated(unit) ||
                         (unit.kind != UnitKind::Light && unit.kind != UnitKind::Archer)) continue;
                     ++matches;
                     selected = static_cast<int>(i);
@@ -213,16 +253,20 @@ public:
             return &frame.armies[slot.team].units[static_cast<std::size_t>(slot.index)];
         };
         if (e.type == EventType::Melee || e.type == EventType::Shot) {
-            if (auto unit = at(step.target))
+            if (auto unit = at(step.target)) {
                 unit->hp = std::max(0, e.hpLeft);
+                unit->defeated = unit->hp <= 0;
+            }
             if (step.target.valid())
                 lastHit_[step.target.team] = step.target;
         } else if (e.type == EventType::Heal) {
             if (auto unit = at(step.target))
                 unit->hp = std::min(unit->maxHp, unit->hp + e.restored);
         } else if (e.type == EventType::Death) {
-            if (auto unit = at(step.actor))
+            if (auto unit = at(step.actor)) {
                 unit->hp = 0;
+                unit->defeated = true;
+            }
         } else if (e.type == EventType::Buff) {
             if (auto unit = at(step.target))
                 applyEquipment(*unit, e.buff);

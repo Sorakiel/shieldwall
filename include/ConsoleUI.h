@@ -10,6 +10,7 @@
 #include "Army.h"
 #include "Event.h"
 #include "UserInterface.h"
+#include "BattlePlayback.h"
 
 class ConsoleUI final : public UserInterface {
 public:
@@ -43,4 +44,6 @@ private:
     std::unique_ptr<View> ownedView_;
     View* view_;
     std::array<std::size_t, 2> cloneCounts_{};
+    BattleSnapshot eventFrame_;
+    presentation::Playback eventPlayback_;
 };

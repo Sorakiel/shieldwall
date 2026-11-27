@@ -15,6 +15,7 @@
 #include "SaveSlots.h"
 #include "SaveLocation.h"
 #include "TextInput.h"
+#include "NumberInput.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -566,6 +567,29 @@ void testSequentialConsoleMenus() {
     CHECK(output.str().find("7 — Слот") == std::string::npos);
 }
 
+void testEditingExistingNumbers() {
+    NumberInput number;
+    number.reset("120"); number.insert('0');
+    CHECK(number.value() == "1200" && parseNumber(number.value(), 1, 10000) == 1200u);
+    number.place(2); number.insert('5');
+    CHECK(number.value() == "12500");
+    number.backspace(); number.eraseForward();
+    CHECK(number.value() == "120");
+    number.place(0); number.eraseForward();
+    CHECK(number.value() == "20");
+    number.place(number.value().size()); number.move(-1, true); number.insert('5');
+    CHECK(number.value() == "25");
+    number.selectAll(); number.move(1); number.insert('0');
+    CHECK(number.value() == "250");
+    number.selectAll(); number.insert('0');
+    CHECK(number.value() == "0" && parseNumber(number.value(), 0, UINT32_MAX) == 0u);
+    number.selectAll(); number.backspace();
+    CHECK(number.value().empty() && !parseNumber(number.value(), 0, UINT32_MAX));
+    number.reset("4294967295");
+    CHECK(parseNumber(number.value(), 0, UINT32_MAX) == UINT32_MAX);
+    number.insert('0'); CHECK(!parseNumber(number.value(), 0, UINT32_MAX));
+}
+
 void testUtf8InputAndConsole() {
     TextInput input; input.reset(5);
     CHECK(input.append(U'т') && input.append(U'е') && input.append(U'a'));
@@ -602,6 +626,7 @@ int main() {
         testPaging(catalog);
         testReplacingAndCancellingParty(catalog);
         testUtf8InputAndConsole();
+        testEditingExistingNumbers();
         testDeleteSaves(catalog);
         testLoadClearsPreviousDisplay(catalog);
         testBackFromLoadedModeRestoresResult(catalog);

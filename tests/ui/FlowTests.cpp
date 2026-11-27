@@ -7,6 +7,7 @@
 #include "ConsoleUI.h"
 #include "Menu.h"
 #include "BattleReplay.h"
+#include "BattleRunner.h"
 #include "SaveSlots.h"
 #include "ArmyUi.h"
 #include "ArmyFactory.h"
@@ -56,6 +57,7 @@ public:
     std::vector<std::string> messages;
     PlaybackHandler handler;
     std::function<void(const BattleEvent&)> onEvent;
+    std::function<void()> onFinish;
     void setPlaybackHandler(PlaybackHandler h) override {
         handler = std::move(h);
     }
@@ -132,6 +134,7 @@ public:
     TurnAction waitForTurn(BattleMode) override {
         return TurnAction::Next;
     }
+    void finishBattleEvents() override { if (onFinish) onFinish(); }
     void battleEvent(const BattleEvent& e, const std::string& text) override {
         if (onEvent)
             onEvent(e);
@@ -350,6 +353,29 @@ void testPlaybackSaves(const UnitCatalog& catalog, bool closeWindow = false) {
         CHECK(a.armyB->front()->hp() == b.armyB->front()->hp());
     }
 }
+void testFormationPlaybackKeepsCheckpoint() {
+    FlowView view;
+    Army a, b;
+    a.add(std::make_unique<LightUnit>("Первый", 20, 1, 0, 10));
+    b.add(std::make_unique<LightUnit>("Второй", 20, 1, 0, 10));
+    BattleEngine engine(a, b, 42);
+    ConsoleUI ui(view);
+    std::mt19937 phrases(8);
+    int checkpoints = 0, saved = -1, finished = 0;
+    view.onFinish = [&] {
+        ++finished;
+        CHECK(view.handler && checkpoints == 0);
+        CHECK(view.handler(TurnAction::Save) && saved == 0);
+        CHECK(view.handler(TurnAction::Manual));
+        CHECK(!view.handler(TurnAction::Exit));
+        throw PlaybackStopped{};
+    };
+    const auto result = BattleRunner(ui).run(engine, a, b, phrases, BattleMode::Automatic, 0,
+        [&](int) { ++checkpoints; }, [&](int turn) { saved = turn; });
+    CHECK(finished == 1 && saved == 0 && checkpoints == 0);
+    CHECK(!result.finished && result.turn == 0 && result.mode == BattleMode::Manual && !view.handler);
+}
+
 void testRussianCounts() {
     for (const auto n : {0u, 5u, 11u, 12u, 14u, 25u, 111u})
         CHECK(unitCount(n) == std::to_string(n) + " бойцов");
@@ -371,6 +397,7 @@ int main() {
         testPlaybackSaves(catalog);
         testPlaybackSaves(catalog, true);
         testRussianCounts();
+        testFormationPlaybackKeepsCheckpoint();
     } catch (const std::exception& e) {
         std::cerr << "Flow test exception: " << e.what() << '\n';
         return 1;

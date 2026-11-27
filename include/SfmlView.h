@@ -27,6 +27,8 @@ public:
     void message(const std::string& text) override;
     void battleMessage(int turn, int team, const std::string& text) override;
     void battleEvent(const BattleEvent& event, const std::string& text) override;
+    void presentBattleEvent(const BattleEvent& event, const std::string& text, bool visible) override;
+    void finishBattleEvents() override;
     void showArmies(const BattleSnapshot& snapshot) override;
     void showResult(int winner, const std::string& text) override;
 

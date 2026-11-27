@@ -41,6 +41,7 @@ struct UnitSnapshot {
     int rangedAttack = 0;
     bool detailsKnown = true;
     int abilityRange = 0;
+    bool defeated = false;
 };
 
 struct ArmySnapshot {
@@ -127,6 +128,12 @@ public:
     virtual void battleEvent(const BattleEvent& event, const std::string& text) {
         if (visibleBattleEvent(event.type)) battleMessage(event.turn, event.team, text);
     }
+    // Animated views still observe quiet events to retain the order of same-name actors.
+    virtual void presentBattleEvent(const BattleEvent& event, const std::string& text, bool visible) {
+        if (visible) battleEvent(event, text);
+    }
+    // Formation animations finish before the controller publishes a turn checkpoint.
+    virtual void finishBattleEvents() {}
     virtual void showArmies(const BattleSnapshot& snapshot) = 0;
     virtual void showResult(int, const std::string& text) { message(text); }
 };

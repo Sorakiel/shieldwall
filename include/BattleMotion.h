@@ -20,8 +20,8 @@ struct Scroll {
     float from = 0, to = 0, elapsed = 0;
     float duration = .5f;
     Scroll() = default;
-    Scroll(float start, float end) : from(start), to(end) {
-        duration = .28f + std::min(.55f, std::sqrt(std::abs(to - from)) * .08f);
+    Scroll(float start, float end, float seconds = 0) : from(start), to(end) {
+        duration = seconds > 0 ? seconds : .20f + std::min(.30f, std::sqrt(std::abs(to - from)) * .055f);
     }
     float value() const { return from + (to - from) * smooth(elapsed / duration); }
     bool advance(float seconds) {
@@ -29,32 +29,28 @@ struct Scroll {
         return elapsed >= duration;
     }
 };
-inline std::size_t focusOffset(std::size_t current, int low, int high, std::size_t count,
-                               std::size_t page) {
-    if (low < 0 || high < low || page == 0) return current;
-    auto result = current;
-    if (static_cast<std::size_t>(low) < current) result = static_cast<std::size_t>(low);
-    else if (static_cast<std::size_t>(high) >= current + page)
-        result = static_cast<std::size_t>(high) - page + 1;
-    return std::min(result, count > page ? count - page : 0);
+inline float maxOffset(std::size_t count, std::size_t visible) {
+    return static_cast<float>(count > visible ? count - visible : 0);
 }
-inline int dragPageDirection(float centerX, float centerY) {
+inline float wheelOffset(float target, float delta, std::size_t count, std::size_t visible) {
+    if (!std::isfinite(delta)) return target;
+    return std::clamp(target - delta * 2.f, 0.f, maxOffset(count, visible));
+}
+inline float focusOffset(float current, int low, int high, std::size_t count, std::size_t visible) {
+    if (low < 0 || high < low || visible == 0) return current;
+    float result = current;
+    if (low < current) result = static_cast<float>(low);
+    else if (high >= current + visible) result = static_cast<float>(high) - visible + 1;
+    return std::clamp(result, 0.f, maxOffset(count, visible));
+}
+inline int dragScrollDirection(float centerX, float centerY) {
     if (centerY < 570 || centerY > 744) return 0;
-    return centerX < 135 ? -1 : centerX > 1210 ? 1 : 0;
+    return centerX < 160 ? -1 : centerX > 1270 ? 1 : 0;
 }
-class DragPager {
-    int direction_ = 0;
-    float held_ = 0;
-public:
-    void reset() { direction_ = 0; held_ = 0; }
-    int advance(int direction, float seconds, bool previous, bool next) {
-        if ((direction < 0 && !previous) || (direction > 0 && !next)) direction = 0;
-        if (direction != direction_) { direction_ = direction; held_ = 0; }
-        if (direction == 0) { held_ = 0; return 0; }
-        if (std::isfinite(seconds) && seconds > 0) held_ += seconds;
-        if (held_ < .55f) return 0;
-        held_ = 0;
-        return direction;
-    }
-};
+inline float edgeScrollOffset(float current, int direction, float seconds, std::size_t count,
+                              std::size_t visible) {
+    if (!std::isfinite(seconds) || seconds <= 0) return current;
+    // Continuous motion while held at an edge: two cards per second.
+    return std::clamp(current + direction * seconds * 2.f, 0.f, maxOffset(count, visible));
+}
 } // namespace presentation
