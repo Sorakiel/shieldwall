@@ -38,6 +38,7 @@ add_executable(shieldwall
     src/SaveLocation.cpp
     src/Mage.cpp
     src/Healer.cpp
+    src/gulyay_gorod.cpp
     src/UnitDecorator.cpp
     src/BuffGiver.cpp
     src/UnitCreator.cpp

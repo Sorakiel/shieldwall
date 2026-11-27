@@ -69,7 +69,7 @@ std::string describe(Army& army) {
 
 void testCatalogReadsFile() {
     UnitCatalog catalog = loadDefault();
-    CHECK(catalog.specs().size() == 5);   // три базовых + маг, целитель
+    CHECK(catalog.specs().size() == 6);
     const UnitSpec& archer = catalog.specs()[2];
     CHECK(archer.kind == UnitKind::Archer && archer.maxHp == 16 && archer.melee == 4);
     CHECK(archer.ranged == 11 && archer.range == 3 && archer.defense == 0 && archer.cost == 18);

@@ -15,7 +15,7 @@ add_library(test_support STATIC ${CoreSources}
     "${Root}/src/ArmyGenerator.cpp" "${Root}/src/SaveService.cpp"
     "${Root}/src/BattleReplay.cpp" "${Root}/src/ArmyBuilder.cpp"
     "${Root}/src/SaveSlots.cpp"
-    "${Root}/src/Mage.cpp" "${Root}/src/Healer.cpp"
+    "${Root}/src/Mage.cpp" "${Root}/src/Healer.cpp" "${Root}/src/gulyay_gorod.cpp"
     "${Root}/src/UnitDecorator.cpp"
     "${Root}/src/BuffGiver.cpp" "${Root}/src/UnitCreator.cpp"
     "${Root}/src/MilitaryAcademy.cpp" "${Root}/src/ArmyFactory.cpp")
