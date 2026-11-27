@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
         s.enteringNumber = true;
         s.prompt = "Seed для случайной генерации (например, 42): ";
         s.numberCancel = NumberCancel::Previous;
-        s.input = "4294967295";
-        s.selectAll = true;
+        s.number.reset("4294967295");
+        s.number.selectAll();
         render("04-seed-page", s);
         navigation();
         if (getButton(Submit).bounds.position.x >= Width / 2 ||
@@ -121,20 +121,20 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Main recruitment screen lacks direct army controls");
         const State methods = s;
         for (const auto grab : {sf::Vector2f(5, 12), sf::Vector2f(130, 125)}) {
-            DragState drag{2, {352 + grab.x, 584 + grab.y}, {352 + grab.x, 584 + grab.y}, true, grab};
-            if (dragPosition(drag) != sf::Vector2f(352, 584) || scene.dropTarget(drag) != 2)
+            DragState drag{2, {348 + grab.x, 584 + grab.y}, {348 + grab.x, 584 + grab.y}, true, grab};
+            if (dragPosition(drag) != sf::Vector2f(348, 584) || scene.dropTarget(drag) != 2)
                 throw std::runtime_error("Card jumps when grabbed near its edge");
-            drag.pointer.x = 500 - RosterCardSize.x / 2 + grab.x;
+            drag.pointer.x = 499 - RosterCardSize.x / 2 + grab.x;
             if (scene.dropTarget(drag) != 2)
                 throw std::runtime_error("Right drag advances before crossing the next center");
             drag.pointer.x = 573 - RosterCardSize.x / 2 + grab.x;
             if (scene.dropTarget(drag) != 3)
                 throw std::runtime_error("Right drag does not insert after the crossed card");
             drag.from = 3;
-            drag.pointer.x = 500 - RosterCardSize.x / 2 + grab.x;
+            drag.pointer.x = 499 - RosterCardSize.x / 2 + grab.x;
             if (scene.dropTarget(drag) != 3)
                 throw std::runtime_error("Left drag advances before crossing the previous center");
-            drag.pointer.x = 420 - RosterCardSize.x / 2 + grab.x;
+            drag.pointer.x = 416 - RosterCardSize.x / 2 + grab.x;
             if (scene.dropTarget(drag) != 2)
                 throw std::runtime_error("Left drag does not insert before the crossed card");
             drag.pointer.y = 150;
@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
         moved.battle.armies[0].units.erase(moved.battle.armies[0].units.begin());
         moved.battle.armies[0].units.insert(moved.battle.armies[0].units.begin() + 2, unit);
         moved.rosterTransition =
-            RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, 0, 2}, unit, .5f, sf::Vector2f(352, 584)};
+            RosterTransition{ArmyEdit{ArmyEdit::Kind::Move, 0, 2}, unit, .5f, sf::Vector2f(348, 584)};
         render("20-reordering", moved);
         State generated = methods;
         render("21-generated-on-methods", generated);
@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
         budget.enteringNumber = true;
         budget.numberCancel = NumberCancel::Previous;
         budget.prompt = "Бюджет каждой армии: ";
-        budget.input = "120";
+        budget.number.reset("120");
         budget.choices.clear();
         render("22-budget-page", budget);
         navigation();
@@ -334,8 +334,21 @@ int main(int argc, char** argv) {
             travel.scrolls[0]->elapsed = travel.scrolls[0]->duration * i / 2;
             render("39-page-scroll-" + std::to_string(i), travel);
         }
+        State editable = budget;
+        editable.error.clear();
+        editable.number.reset("120");
+        editable.number.insert('0');
+        render("46-budget-appended-zero", editable);
+        if (editable.number.value() != "1200") throw std::runtime_error("Budget editing replaced the old value");
+        scene.placeNumberCaret(editable, {150 + scene.textWidth("12", 32), 487});
+        if (editable.number.cursor() != 2) throw std::runtime_error("Click did not place the numeric caret");
+        editable.number.move(-1, true);
+        render("46-budget-selection", editable);
+        if (hoveredArmy(battleState, {470,400}) != 0 || hoveredArmy(battleState, {618,400}) != 1 ||
+            hoveredArmy(battleState, {546,400}) || hoveredArmy(battleState, {1200,400}))
+            throw std::runtime_error("Wheel routing does not follow the hovered army");
         State crossPage = methods;
-        for (int i = 5; i < 16; ++i) {
+        for (int i = 5; i < 24; ++i) {
             auto unit = crossPage.battle.armies[0].units[1];
             unit.name = "Боец " + std::to_string(i + 1);
             crossPage.battle.armies[0].units.push_back(unit);
@@ -346,6 +359,39 @@ int main(int argc, char** argv) {
         if (scene.dropTarget(*crossPage.drag) != 8)
             throw std::runtime_error("Cannot swap units eight and nine across pages");
 
+        State rosterScroll = crossPage;
+        rosterScroll.drag.reset();
+        for (const auto offset : {.25f, 3.5f, 8.75f}) {
+            rosterScroll.offsets[0] = offset;
+            render("47-roster-scroll-" + std::to_string(offset), rosterScroll);
+            if (std::any_of(scene.buttons().begin(), scene.buttons().end(), [](const Button& b) {
+                return b.action >= 200 && b.action <= 203;
+            })) throw std::runtime_error("Roster still contains page arrows");
+        }
+        State battleScroll = travel;
+        battleScroll.scrolls[0].reset(); battleScroll.offsets = {2.5f, .5f};
+        for (int i = 0; i < 5; ++i) battleScroll.battle.armies[1].units.push_back(battleScroll.battle.armies[1].units[i]);
+        render("48-battle-wheel-scroll", battleScroll);
+        if (std::any_of(scene.buttons().begin(), scene.buttons().end(), [](const Button& b) {
+            return b.action >= 200 && b.action <= 203;
+        })) throw std::runtime_error("Battle still contains page arrows");
+        State hoveredBattle = battleScroll;
+        hoveredBattle.playing = false; hoveredBattle.waiting = true;
+        render("50-scrolled-unit-tooltip", hoveredBattle, {422, 400});
+        State formation = battleState;
+        for (int team = 0; team < 2; ++team) {
+            for (int i = 5; i < 9; ++i) formation.battle.armies[team].units.push_back(formation.battle.armies[team].units[i % 5]);
+            formation.battle.armies[team].units[0].hp = 0;
+            formation.battle.armies[team].units[2].hp = 0;
+            formation.battle.armies[team].units[5].hp = 0;
+        }
+        formation.effect = presentation::Playback::cleanup(formation.battle, 17);
+        formation.playing = true; formation.waiting = false;
+        for (int i = 0; i < 5; ++i) {
+            formation.effect->elapsed = presentation::duration(EventType::Promote) * i / 4;
+            render("49-whole-formation-" + std::to_string(i), formation);
+        }
+        formation.effect->elapsed = 0;
         struct DetailedClone : BattleEvent {
             int sourceIndex = -1;
             std::string cloneName;
@@ -474,7 +520,7 @@ int main(int argc, char** argv) {
         paged.enteringNumber = true;
         paged.numberCancel = NumberCancel::Dialog;
         paged.prompt = "Кого убрать (номер): ";
-        paged.input = "1";
+        paged.number.reset("1");
         render("18-cancel-dialog", paged);
 
         s = {};
@@ -494,7 +540,7 @@ int main(int argc, char** argv) {
                 std::ostringstream name;
                 name << "scroll/frame-" << std::setw(4) << std::setfill('0') << scrollFrame++;
                 render(name.str(), scrollMovie);
-                if (scrollMovie.scrolls[0]->advance(presentation::playbackSeconds(1.f / 24.f, 1)))
+                if (scrollMovie.scrolls[0]->advance(1.f / 24.f))
                     scrollMovie.scrolls[0].reset();
             }
             render("scroll/last", scrollMovie);
@@ -512,6 +558,34 @@ int main(int argc, char** argv) {
                 std::ostringstream name;
                 name << "clone/frame-" << std::setw(4) << std::setfill('0') << cloneFrame++;
                 render(name.str(), cloneMovie);
+            }
+            fs::create_directories(out / "formation");
+            State formationMovie = formation;
+            int formationFrame = 0;
+            while (!formationMovie.effect->finished()) {
+                formationMovie.effect->advance(presentation::playbackSeconds(1.f / 24.f, 1));
+                std::ostringstream name;
+                name << "formation/frame-" << std::setw(4) << std::setfill('0') << formationFrame++;
+                render(name.str(), formationMovie);
+            }
+            fs::create_directories(out / "roster-scroll");
+            State rosterMovie = rosterScroll;
+            rosterMovie.offsets[0] = 2;
+            rosterMovie.scrolls[0] = presentation::Scroll(0, 2, .18f);
+            int rosterFrame = 0;
+            while (rosterMovie.scrolls[0]) {
+                std::ostringstream name;
+                name << "roster-scroll/frame-" << std::setw(4) << std::setfill('0') << rosterFrame++;
+                render(name.str(), rosterMovie);
+                if (rosterMovie.scrolls[0]->advance(1.f / 60.f)) rosterMovie.scrolls[0].reset();
+            }
+            rosterMovie.drag = DragState{7, {1162.5f, 654}, {1317.f, 654}, true};
+            for (int i = 0; i < 60; ++i) {
+                rosterMovie.offsets[0] = presentation::edgeScrollOffset(rosterMovie.offsets[0], 1, 1.f/60.f,
+                    rosterMovie.battle.armies[0].units.size(), RosterUnits);
+                std::ostringstream name;
+                name << "roster-scroll/drag-" << std::setw(4) << std::setfill('0') << i;
+                render(name.str(), rosterMovie);
             }
             State movie = battleState;
             movie.log.clear();
