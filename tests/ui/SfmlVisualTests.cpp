@@ -291,7 +291,8 @@ int main(int argc, char** argv) {
             BattleEvent e{types[i], 17, 0,    names[i == 1 ? 2 : i == 2 ? 4 : i == 3 ? 3 : 0], names[1], 7,
                           13,       8,  "щит"};
             effect.effect = playback.begin(effect.battle, e);
-            effect.effect->elapsed = presentation::duration(e.type) * .57f;
+            if (effect.effect->advance(presentation::duration(e.type) * .57f))
+                playback.commit(effect.battle, *effect.effect);
             effect.playing = true;
             effect.waiting = false;
             render("09-effect-" + std::to_string(i), effect);
@@ -302,6 +303,118 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Playback controls are disabled");
             }
         }
+        auto logEvent = [&](State& image, const BattleEvent& event, const std::string& copyName = "") {
+            image.log.clear();
+            image.log.startTurn(event.turn,
+                [&](const std::u32string& row) { return scene.textWidth(sf::String(row)); }, LogWidth);
+            std::mt19937 phrases(42);
+            const auto message = battletext::icons(EventFormatter::format(event, phrases, false, copyName));
+            image.log.append(sf::String::fromUtf8(message.begin(), message.end()).toUtf32(), event.team,
+                [&](const std::u32string& row) { return scene.textWidth(sf::String(row)); }, LogWidth);
+        };
+        State speeds = battleState;
+        speeds.speed = 4;
+        render("38-direct-speeds", speeds);
+        for (const auto action : {SpeedHalf, Speed, Speed2, Speed4})
+            if (!getButton(action).enabled) throw std::runtime_error("Direct speed selector is disabled");
+        speeds.speed = .5f;
+        render("38-half-speed", speeds);
+        speeds.speed = 1.f;
+        render("38-default-speed", speeds);
+        State travel = battleState;
+        travel.playing = true; travel.waiting = false;
+        for (int i = 5; i < 20; ++i) {
+            auto unit = travel.battle.armies[0].units[static_cast<std::size_t>(i % 5)];
+            unit.name = "Боец " + std::to_string(i + 1);
+            travel.battle.armies[0].units.push_back(unit);
+        }
+        travel.offsets[0] = 12;
+        for (int i = 0; i < 3; ++i) {
+            travel.scrolls[0] = presentation::Scroll(0, 12);
+            travel.scrolls[0]->elapsed = travel.scrolls[0]->duration * i / 2;
+            render("39-page-scroll-" + std::to_string(i), travel);
+        }
+        State crossPage = methods;
+        for (int i = 5; i < 16; ++i) {
+            auto unit = crossPage.battle.armies[0].units[1];
+            unit.name = "Боец " + std::to_string(i + 1);
+            crossPage.battle.armies[0].units.push_back(unit);
+        }
+        crossPage.offsets[0] = 8;
+        crossPage.drag = DragState{7, {1176.5f, 654}, {130.f, 654}, true};
+        render("40-cross-page-drag", crossPage);
+        if (scene.dropTarget(*crossPage.drag) != 8)
+            throw std::runtime_error("Cannot swap units eight and nine across pages");
+
+        struct DetailedClone : BattleEvent {
+            int sourceIndex = -1;
+            std::string cloneName;
+            int cloneHp = -1;
+        };
+        State cloneBase = battleState;
+        cloneBase.battle.armies[0].units = {{UnitKind::Archer, "Дарр", 20, 20, 18, 4, 0, 11},
+            {UnitKind::Archer, "Дарр", 1, 20, 18, 4, 0, 11}, {UnitKind::Mage, "Маг", 14, 14, 25}};
+        cloneBase.battle.armies[0].totalCost = 61;
+        cloneBase.log.clear();
+        DetailedClone copy;
+        copy.type = EventType::Clone; copy.turn = 17; copy.team = 0;
+        copy.actor = "Маг"; copy.target = "Дарр";
+        copy.sourceIndex = 1; copy.cloneName = "Дарр [Клон 1]"; copy.cloneHp = 1;
+        const float clonePhases[] = {.16f, .34f, .52f, .85f};
+        for (int i = 0; i < 4; ++i) {
+            State image = cloneBase;
+            presentation::Playback motion;
+            image.effect = motion.begin(image.battle, copy);
+            if (image.effect->advance(presentation::duration(copy.type) * clonePhases[i])) {
+                motion.commit(image.battle, *image.effect);
+                logEvent(image, copy, copy.cloneName);
+            }
+            image.playing = true; image.waiting = false;
+            render("41-clone-sequence-" + std::to_string(i), image);
+        }
+        State ambiguous = cloneBase;
+        presentation::Playback oldEvents;
+        ambiguous.effect = oldEvents.begin(ambiguous.battle, static_cast<const BattleEvent&>(copy));
+        ambiguous.effect->advance(presentation::duration(copy.type) * .62f);
+        oldEvents.commit(ambiguous.battle, *ambiguous.effect);
+        ambiguous.playing = true; ambiguous.waiting = false;
+        render("42-clone-without-source-index", ambiguous);
+        for (const float phase : {.32f, .65f}) {
+            State healed = battleState;
+            healed.battle.armies[0].units[1].hp = 5;
+            const BattleEvent event{EventType::Heal, 17, 0, names[4], names[1], 0, 0, 8};
+            presentation::Playback motion;
+            healed.effect = motion.begin(healed.battle, event);
+            if (healed.effect->advance(presentation::duration(event.type) * phase)) {
+                motion.commit(healed.battle, *healed.effect);
+                logEvent(healed, event);
+            }
+            healed.playing = true; healed.waiting = false;
+            render(phase < .5f ? "43-heal-transfer" : "43-heal-impact", healed);
+        }
+        for (const auto& equipment : {"шлем", "щит", "копьё", "конь"}) {
+            State granted = battleState;
+            granted.battle.armies[0].units[0] = {UnitKind::Heavy, "Брон", 31, 45, 30, 9, 5};
+            const BattleEvent event{EventType::Buff, 17, 0, names[1], "Брон", 0, 0, 0, equipment};
+            presentation::Playback motion;
+            granted.effect = motion.begin(granted.battle, event);
+            if (granted.effect->advance(presentation::duration(event.type) * .65f)) {
+                motion.commit(granted.battle, *granted.effect);
+                logEvent(granted, event);
+            }
+            granted.playing = true; granted.waiting = false;
+            render("44-equipment-" + std::string(equipment), granted);
+        }
+        State damage = battleState;
+        damage.battle.armies[1].units[0] = {UnitKind::Heavy, "Щитник", 900, 1000, 30, 9, 5};
+        const BattleEvent hitText{EventType::Melee, 17, 0, names[0], "Щитник", 257, 643};
+        presentation::Playback damageMotion;
+        damage.effect = damageMotion.begin(damage.battle, hitText);
+        damage.effect->advance(presentation::duration(hitText.type) * .68f);
+        damageMotion.commit(damage.battle, *damage.effect);
+        logEvent(damage, hitText);
+        damage.playing = true; damage.waiting = false;
+        render("45-readable-damage", damage);
         State equipped = battleState;
         equipped.battle.armies[0].units[0].name = "Брон";
         equipped.battle.armies[0].units[0].attack = 9;
@@ -373,6 +486,33 @@ int main(int argc, char** argv) {
 
         if (argc > 3 && std::string(argv[3]) == "--animate") {
             fs::create_directories(out / "animation");
+            fs::create_directories(out / "scroll");
+            State scrollMovie = travel;
+            scrollMovie.scrolls[0] = presentation::Scroll(0, 12);
+            int scrollFrame = 0;
+            while (scrollMovie.scrolls[0]) {
+                std::ostringstream name;
+                name << "scroll/frame-" << std::setw(4) << std::setfill('0') << scrollFrame++;
+                render(name.str(), scrollMovie);
+                if (scrollMovie.scrolls[0]->advance(presentation::playbackSeconds(1.f / 24.f, 1)))
+                    scrollMovie.scrolls[0].reset();
+            }
+            render("scroll/last", scrollMovie);
+            fs::create_directories(out / "clone");
+            State cloneMovie = cloneBase;
+            cloneMovie.playing = true; cloneMovie.waiting = false;
+            presentation::Playback cloning;
+            cloneMovie.effect = cloning.begin(cloneMovie.battle, copy);
+            int cloneFrame = 0;
+            while (!cloneMovie.effect->finished()) {
+                if (cloneMovie.effect->advance(presentation::playbackSeconds(1.f / 24.f, 1))) {
+                    cloning.commit(cloneMovie.battle, *cloneMovie.effect);
+                    logEvent(cloneMovie, copy, copy.cloneName);
+                }
+                std::ostringstream name;
+                name << "clone/frame-" << std::setw(4) << std::setfill('0') << cloneFrame++;
+                render(name.str(), cloneMovie);
+            }
             State movie = battleState;
             movie.log.clear();
             movie.battle.armies[0].units[0].name = "Брон";
@@ -393,9 +533,10 @@ int main(int argc, char** argv) {
                                                {EventType::Buff, 17, 0, "Мирн", "Брон", 0, 0, 0, "щит"}};
             for (const auto& event : events) {
                 movie.effect = sequence.begin(movie.battle, event);
-                const auto message = battletext::icons(EventFormatter::format(event, phrases, false));
+                const auto message = battletext::icons(EventFormatter::format(event, phrases, false,
+                    movie.effect->clone ? movie.effect->clone->name : ""));
                 while (!movie.effect->finished()) {
-                    if (movie.effect->advance(1.f / 24.f)) {
+                    if (movie.effect->advance(presentation::playbackSeconds(1.f / 24.f, movie.speed))) {
                         sequence.commit(movie.battle, *movie.effect);
                         movie.log.startTurn(
                             17, [&](const std::u32string& row) { return scene.textWidth(sf::String(row)); },

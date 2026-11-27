@@ -22,6 +22,10 @@ struct ArmyEdit {
 class ViewBack : public std::exception {};
 class PlaybackStopped : public std::exception {};
 
+inline bool visibleBattleEvent(EventType type) {
+    return type != EventType::OutOfRange && type != EventType::CloneFailed;
+}
+
 enum class BattleMode { Automatic, Manual };
 enum class TurnAction { Next, Automatic, Manual, Exit, Save };
 using PlaybackHandler = std::function<bool(TurnAction)>;
@@ -35,12 +39,15 @@ struct UnitSnapshot {
     int attack = 0;
     int defense = 0;
     int rangedAttack = 0;
+    bool detailsKnown = true;
+    int abilityRange = 0;
 };
 
 struct ArmySnapshot {
     std::string name;
     int totalCost = 0;
     std::vector<UnitSnapshot> units;
+    std::size_t clonesCreated = 0;
 };
 
 struct BattleSnapshot {
@@ -118,7 +125,7 @@ public:
             (team == 0 ? "Синие" : team == 1 ? "Красные" : "Без команды") + "] " + text);
     }
     virtual void battleEvent(const BattleEvent& event, const std::string& text) {
-        battleMessage(event.turn, event.team, text);
+        if (visibleBattleEvent(event.type)) battleMessage(event.turn, event.team, text);
     }
     virtual void showArmies(const BattleSnapshot& snapshot) = 0;
     virtual void showResult(int, const std::string& text) { message(text); }

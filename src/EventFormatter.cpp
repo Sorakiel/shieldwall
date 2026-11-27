@@ -9,7 +9,8 @@ const char* EventFormatter::teamName(int team) {
     }
 }
 
-std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng, bool withPrefix) {
+std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng, bool withPrefix,
+                                   const std::string& cloneName) {
     // Остаток даёт одинаковые варианты фраз на разных стандартных библиотеках.
     const bool alternate = (rng() % 2) != 0;
     const std::string prefix = !withPrefix ? "" : "[Ход " + std::to_string(event.turn) + "] [" +
@@ -43,7 +44,7 @@ std::string EventFormatter::format(const BattleEvent& event, std::mt19937& rng, 
             teamName(event.team) + ".";
     case EventType::Clone:
         return prefix + actor + (alternate ? " создаёт копию бойца " : " клонирует бойца ") +
-            target + ".";
+            target + (cloneName.empty() ? "." : " — «" + cloneName + "».");
     case EventType::CloneFailed:
         return prefix + actor + (alternate ? " не смог клонировать бойца " : " не смог создать копию бойца ") +
             target + ".";

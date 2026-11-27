@@ -1,3 +1,4 @@
+#include "Mage.h"
 #include <iostream>
 #include <algorithm>
 #include <deque>
@@ -317,9 +318,42 @@ namespace {
         CHECK(view.frames.back().finished);
     }
 
+    void testQuietEventsAndCloneJournal() {
+        std::istringstream input;
+        std::ostringstream output;
+        ConsoleUI ui(input, output);
+        std::vector<BattleEvent> events{{EventType::OutOfRange, 1, 0, "Тихий лучник"},
+            {EventType::CloneFailed, 1, 0, "Тихий маг", "Цель"},
+            {EventType::Shot, 1, 1, "Стрелок", "Цель", 3, 7}};
+        std::mt19937 rng(42), expected(42);
+        ui.showEvents(events, rng);
+        for (const auto& event : events) EventFormatter::format(event, expected, false);
+        CHECK(rng() == expected());
+        CHECK(!contains(output.str(), "Тихий лучник") && !contains(output.str(), "Тихий маг"));
+        CHECK(contains(output.str(), "Стрелок"));
+        Army army, enemy;
+        army.add(std::make_unique<LightUnit>("Дарр", 20, 7, 1, 10));
+        army.add(std::make_unique<Mage>("Маг", 14, 2, 100, 1, 0, 25));
+        enemy.add(std::make_unique<LightUnit>("Враг", 20, 7, 1, 10));
+        ui.showArmies(army, enemy);
+        std::mt19937 battle(9);
+        auto* mage = dynamic_cast<Mage*>(army.at(1));
+        auto created = mage->cast(army, 1, battle);
+        CHECK(created.success && created.cloneName == "Дарр [Клон 1]");
+        ui.showEvents({{EventType::Clone, 2, 0, "Маг", created.target}}, rng);
+        CHECK(contains(output.str(), "— «Дарр [Клон 1]»."));
+        ui.showArmies(army, enemy);
+        army.at(1)->takeDamage(100);
+        army.removeDead();
+        created = mage->cast(army, 1, battle);
+        ui.showEvents({{EventType::Clone, 3, 0, "Маг", created.target}}, rng);
+        CHECK(contains(output.str(), "— «Дарр [Клон 2]»."));
+    }
+
 }  // namespace
 
 int main() {
+    testQuietEventsAndCloneJournal();
     testFormatter();
     testInput();
     testMenu();

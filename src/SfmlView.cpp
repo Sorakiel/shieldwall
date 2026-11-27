@@ -12,6 +12,7 @@ struct SfmlView::Impl {
     TextInput textInput;
     ShortcutGuard shortcuts;
     presentation::Playback playback;
+    presentation::DragPager dragPager;
     PlaybackHandler playbackHandler;
     std::optional<ArmyEdit> pendingEdit;
     std::optional<sfmlui::RosterTransition> nextTransition;
@@ -47,6 +48,18 @@ struct SfmlView::Impl {
             throw ViewClosed{};
         state.ambience = ambience.getElapsedTime().asSeconds();
         const auto dt = uiFrame.restart().asSeconds();
+        const bool frozen = state.paused || state.enteringText || state.enteringNumber ||
+                            (state.playing && !state.choices.empty());
+        for (auto& scroll : state.scrolls)
+            if (scroll && scroll->advance(presentation::playbackSeconds(dt, state.speed, frozen))) scroll.reset();
+        if (state.drag && state.drag->active && state.recruiting) {
+            const auto center = sfmlui::dragPosition(*state.drag) + sfmlui::RosterCardSize / 2.f;
+            const auto team = state.recruitment.activeTeam;
+            const auto offset = state.offsets[team], count = state.battle.armies[team].units.size();
+            const auto page = dragPager.advance(presentation::dragPageDirection(center.x, center.y), dt,
+                                               offset > 0, offset + 8 < count);
+            if (page) common(200 + team * 2 + (page > 0 ? 1 : 0));
+        } else dragPager.reset();
         if (state.rosterTransition) {
             state.rosterTransition->progress = std::min(1.f, state.rosterTransition->progress + dt / .26f);
             if (state.rosterTransition->progress >= 1.f)
@@ -95,16 +108,26 @@ struct SfmlView::Impl {
             (state.stage == ViewStage::Recruitment && !state.recruiting))
             append(text);
     }
+    void scrollTo(int team, std::size_t to) {
+        const auto from = sfmlui::displayedOffset(state, team);
+        state.offsets[team] = to;
+        if (!state.recruiting && std::abs(from - static_cast<float>(to)) > .01f)
+            state.scrolls[team] = presentation::Scroll(from, static_cast<float>(to));
+        else state.scrolls[team].reset();
+    }
     void clampUnits() {
         const std::size_t page = state.recruiting ? 8 : sfmlui::PageUnits;
         for (int team = 0; team < 2; ++team) {
             const auto n = state.battle.armies[team].units.size();
-            state.offsets[team] = std::min(state.offsets[team], n == 0 ? 0 : ((n - 1) / page) * page);
+            const auto offset = std::min(state.offsets[team], n == 0 ? 0 : ((n - 1) / page) * page);
+            if (offset != state.offsets[team]) scrollTo(team, offset);
         }
     }
     bool common(int action) {
-        if (action == sfmlui::Speed) {
-            state.speed = state.speed == .5f ? 1.f : state.speed == 1.f ? 2.f : .5f;
+        if (action == sfmlui::SpeedHalf || action == sfmlui::Speed ||
+            action == sfmlui::Speed2 || action == sfmlui::Speed4) {
+            state.speed = action == sfmlui::SpeedHalf ? .5f : action == sfmlui::Speed ? 1.f
+                        : action == sfmlui::Speed2 ? 2.f : 4.f;
             return true;
         }
         if (action == sfmlui::Pause) {
@@ -116,8 +139,10 @@ struct SfmlView::Impl {
             const auto n = state.battle.armies[team].units.size();
             const std::size_t page = state.recruiting ? 8 : sfmlui::PageUnits;
             const auto last = n == 0 ? 0 : ((n - 1) / page) * page;
-            auto& offset = state.offsets[team];
-            offset = action % 2 == 0 ? (offset >= page ? offset - page : 0) : std::min(last, offset + page);
+            const auto offset = state.offsets[team];
+            scrollTo(team, action % 2 == 0 ? (offset >= page ? offset - page : 0)
+                                         : std::min(last, offset + page));
+            dragPager.reset();
             return true;
         }
         return false;
@@ -342,23 +367,30 @@ struct SfmlView::Impl {
                     high = std::max(high, slot.index);
                 }
             if (low >= 0) {
-                const auto current = static_cast<int>(state.offsets[team]);
-                if (low >= current && high < current + static_cast<int>(sfmlui::PageUnits))
-                    continue;
-                state.offsets[team] =
-                    static_cast<std::size_t>(high - low < static_cast<int>(sfmlui::PageUnits) ? low : high);
+                auto count = state.battle.armies[team].units.size();
+                if (step.event.type == EventType::Clone && step.actor.team == team) {
+                    high = std::max(high, step.actor.index + 1);
+                    if (step.target.valid() && step.target.index >= step.actor.index)
+                        high = std::max(high, step.target.index + 1);
+                    ++count;
+                }
+                const auto next = presentation::focusOffset(state.offsets[team], low, high, count,
+                                                            sfmlui::PageUnits);
+                if (next != state.offsets[team]) scrollTo(team, next);
             }
         }
     }
     void play(const BattleEvent& event, const std::string& text) {
+        const auto step = playback.begin(state.battle, event);
+        if (!visibleBattleEvent(event.type)) return;
         state.playing = true;
-        state.paused = false;
         state.turn = event.turn;
         shortcuts.cancel();
-        state.effect = playback.begin(state.battle, event);
+        state.effect = step;
         follow(*state.effect);
         sf::Clock frame;
-        while (!state.effect->finished()) {
+        while (state.effect && (!state.effect->finished() || sfmlui::scrolling(state))) {
+            const bool wasScrolling = sfmlui::scrolling(state);
             draw();
             if (const auto action = poll()) {
                 if (*action == sfmlui::Auto || *action == sfmlui::Save || *action == 0) {
@@ -375,8 +407,9 @@ struct SfmlView::Impl {
                 } else
                     common(*action);
             }
-            const float dt = std::min(frame.restart().asSeconds(), .075f);
-            if (!state.paused && window.hasFocus() && state.effect->advance(dt * state.speed)) {
+            const float dt = frame.restart().asSeconds();
+            if (!wasScrolling && !sfmlui::scrolling(state) &&
+                state.effect->advance(presentation::playbackSeconds(dt, state.speed, state.paused))) {
                 playback.commit(state.battle, *state.effect);
                 eventText(event.turn, event.team, text);
             }
@@ -596,7 +629,7 @@ TurnAction SfmlView::waitForTurn(BattleMode mode) {
             }
             impl_->common(*action);
         }
-        if (s.automatic && impl_->window.hasFocus() && clock.getElapsedTime().asMilliseconds() >= 650)
+        if (s.automatic && clock.getElapsedTime().asMilliseconds() >= 650)
             break;
     }
     s.waiting = false;
