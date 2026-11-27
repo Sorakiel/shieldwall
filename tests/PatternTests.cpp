@@ -67,6 +67,50 @@ void testBadNewSpecs() {
     CHECK(err("light;20;7;5;0;1;10"));       // выстрел у лёгкого
 }
 
+void testCloneNumbers() {
+    std::mt19937 rng(42);
+    for (int team = 0; team < 2; ++team) {
+        Army army;
+        army.add(std::make_unique<Archer>("Дарр", 20, 2, 7, 3, 1, 18));
+        army.at(0)->takeDamage(4);
+        army.add(std::make_unique<Mage>("Маг", 20, 1, 100, 1, 0, 25));
+        army.add(std::make_unique<Mage>("Второй маг", 20, 1, 100, 1, 0, 25));
+        auto* mage = dynamic_cast<Mage*>(army.at(1));
+        CHECK(mage->cast(army, 1, rng).cloneName == "Дарр [Клон 1]");
+        CHECK(army.at(0)->name() == "Дарр" && army.at(1)->hp() == 16);
+        CHECK(dynamic_cast<Archer*>(army.at(1)) != nullptr);
+        // Единственная цель в радиусе — первая копия.
+        CHECK(mage->cast(army, 2, rng).cloneName == "Дарр [Клон 2]");
+        army.at(1)->takeDamage(100);
+        army.at(2)->takeDamage(100);
+        mage->takeDamage(100);
+        army.removeDead();
+        auto* otherMage = dynamic_cast<Mage*>(army.at(1));
+        CHECK(otherMage->cast(army, 1, rng).cloneName == "Дарр [Клон 3]");
+    }
+}
+
+void testWoundedClone() {
+    const auto catalog = loadDefault();
+    std::mt19937 rng(9);
+    for (auto kind : {UnitKind::Light, UnitKind::Archer}) {
+        Army army;
+        army.add(make(catalog, kind, "Дарр"));
+        army.add(make(catalog, kind, "Дарр"));
+        army.add(std::make_unique<Mage>("Маг", 20, 1, 100, 1, 0, 25));
+        Unit* wounded = army.at(1);
+        wounded->takeDamage(wounded->maxHp() - 1);
+        auto* mage = dynamic_cast<Mage*>(army.at(2));
+        auto result = mage->cast(army, 2, rng);
+        CHECK(result.success && result.sourceIndex == 1 && result.cloneHp == 1);
+        CHECK(army.at(2)->hp() == 1 && army.at(2)->maxHp() == wounded->maxHp());
+        result = mage->cast(army, 3, rng);
+        CHECK(result.sourceIndex == 2 && result.cloneHp == 1 && army.at(3)->hp() == 1);
+        dynamic_cast<IHealable*>(army.at(2))->heal(2);
+        CHECK(wounded->hp() == 1 && army.at(2)->hp() == 3 && army.at(3)->hp() == 1);
+    }
+}
+
 void testMage() {
     UnitCatalog c = loadDefault();
     std::mt19937 rng(7);
@@ -89,7 +133,7 @@ void testMage() {
         if (r.success) {
             ++successes;
             CHECK(b.size() == 4);
-            CHECK(b.at(1)->name() == "Первый" && b.at(2)->kind() == UnitKind::Mage);   // копия перед магом
+            CHECK(b.at(1)->name() == "Первый [Клон 1]" && b.at(2)->kind() == UnitKind::Mage);   // копия перед магом
         } else {
             CHECK(b.size() == 3);
         }
@@ -306,6 +350,8 @@ int main() {
     testCatalogHasNewTypes();
     testBadNewSpecs();
     testMage();
+    testCloneNumbers();
+    testWoundedClone();
     testHealer();
     testDecorator();
     testBuffGiver();

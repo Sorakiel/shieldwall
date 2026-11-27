@@ -15,11 +15,15 @@ public:
     int meleeAttack() const override { return melee_; }
     int power() const { return power_; }
     int range() const { return range_; }
+    std::size_t clonesCreated() const { return clonesCreated_; }
 
     struct CastResult {
         bool performed = false;   // способность вообще была применена (была цель и право на действие)
         bool success = false;     // бросок на шанс удался и копия появилась
+        std::string cloneName;    // имя созданной копии при успехе
         std::string target;       // кого пытались клонировать
+        int sourceIndex = -1;     // позиция цели до вставки копии
+        int cloneHp = 0;          // текущее здоровье копии в момент создания
     };
 
     // Особое действие. position - место мага в own. Маг в первом ряду не колдует.
@@ -29,4 +33,6 @@ public:
 
 private:
     int melee_ = 0, power_ = 0, range_ = 0;
+    // All mages in one army receive the same counter on each successful cast.
+    mutable std::size_t clonesCreated_ = 0;
 };
