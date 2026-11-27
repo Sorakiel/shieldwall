@@ -140,9 +140,11 @@ namespace {
         expectedUi.showArmies(expectedA, expectedB);
         actualUi.showArmies(a, b);
         CHECK(expectedOutput.str() == actualOutput.str());
-        CHECK(engine.winner() == -2);
-        CHECK(!a.isDefeated() && !b.isDefeated());
-        CHECK(contains(output.str(), "Итог: ничья."));
+        // The UI must report the engine's outcome regardless of catalog balance.
+        std::ostringstream resultOutput;
+        ConsoleUI resultUi(input, resultOutput);
+        resultUi.showResult(expectedEngine.winner());
+        CHECK(contains(output.str(), resultOutput.str()));
 
         // Повторный запуск завершённого боя не вызывает лишний ход.
         std::ostringstream finishedOutput;

@@ -90,7 +90,7 @@ if(SHIELDWALL_GRAPHICS)
     option(SHIELDWALL_VISUAL_TESTS "Build offscreen SFML scene checks" OFF)
     if(SHIELDWALL_VISUAL_TESTS)
         add_executable(sfml_visual_tests tests/ui/SfmlVisualTests.cpp src/SfmlScene.cpp src/View.cpp src/EventFormatter.cpp
-            src/Unit.cpp src/UnitDecorator.cpp)
+            src/Unit.cpp src/UnitDecorator.cpp src/gulyay_gorod.cpp)
         target_include_directories(sfml_visual_tests PRIVATE include)
         target_link_libraries(sfml_visual_tests PRIVATE SFML::Graphics)
         if(MSVC)

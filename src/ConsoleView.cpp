@@ -1,4 +1,5 @@
 #include "ConsoleView.h"
+#include "UnitPresentation.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -107,8 +108,9 @@ Table armyRows(const ArmySnapshot& army, bool recruitment) {
     for (std::size_t index = 0; index < army.units.size(); ++index) {
         const auto& unit = army.units[index];
         rows.push_back({std::to_string(index + 1) + ". " + unitKindName(unit.kind) + " «" + unit.name + "»",
-            "Здоровье " + (recruitment ? std::to_string(unit.maxHp) :
-                std::to_string(unit.hp) + "/" + std::to_string(unit.maxHp)),
+            std::string(unitui::healthName(unit.kind)) + " " +
+                (recruitment && !unitui::fortified(unit.kind) ? std::to_string(unit.maxHp) :
+                 std::to_string(unit.hp) + "/" + std::to_string(unit.maxHp)),
             "Стоимость " + std::to_string(unit.cost)});
     }
     return rows;
@@ -353,8 +355,10 @@ void ConsoleView::showRecruitment(const RecruitmentSnapshot& snapshot) {
     Table offers;
     for (const auto& offer : snapshot.offers) {
         std::vector<std::string> cells{unitKindName(offer.kind),
-            "Стоимость " + std::to_string(offer.cost), "Здоровье " + std::to_string(offer.hp),
-            "Атака " + std::to_string(offer.melee), "Защита " + std::to_string(offer.defense)};
+            "Стоимость " + std::to_string(offer.cost),
+            std::string(unitui::healthName(offer.kind)) + " " + unitui::academyHealth(offer.kind, offer.hp),
+            "Атака " + unitui::attackValue(offer.kind, offer.melee),
+            std::string(unitui::defenseName(offer.kind)) + " " + unitui::defenseValue(offer.kind, offer.defense)};
         const auto special = splitCells(specialActionDescription(offer.kind, offer.ranged, offer.range));
         cells.insert(cells.end(), special.begin(), special.end());
         offers.push_back(std::move(cells));

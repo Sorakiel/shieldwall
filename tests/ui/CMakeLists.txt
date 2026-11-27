@@ -52,7 +52,7 @@ add_executable(ability_engine_tests "${Root}/tests/AbilityEngineTests.cpp"
 target_link_libraries(ability_engine_tests PRIVATE test_support)
 
 add_executable(console_layout_tests ConsoleLayoutTests.cpp
-    "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp")
+    "${Root}/src/View.cpp" "${Root}/src/ConsoleView.cpp" "${Root}/src/gulyay_gorod.cpp")
 target_include_directories(console_layout_tests PRIVATE "${Root}/include")
 
 add_executable(battle_playback_tests BattlePlaybackTests.cpp)
