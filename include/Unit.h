@@ -4,7 +4,7 @@
 #include <string>
 #include "Abilities.h"
 
-enum class UnitKind { Light, Heavy, Archer, Mage, Healer };
+enum class UnitKind { Light, Heavy, Archer, Mage, Healer, GulyayGorod };
 
 class Unit {
 public:
