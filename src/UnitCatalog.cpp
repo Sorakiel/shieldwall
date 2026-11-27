@@ -1,4 +1,5 @@
 #include "UnitCatalog.h"
+#include "gulyay_gorod.h"
 #include <algorithm>
 #include <fstream>
 
@@ -68,6 +69,7 @@ const KindToken KindTokens[] = {
     {UnitKind::Archer, "archer"},
     {UnitKind::Mage, "mage"},
     {UnitKind::Healer, "healer"},
+    {UnitKind::GulyayGorod, "gulyay_gorod"},
 };
 
 }  // namespace
@@ -101,6 +103,12 @@ void validateSpec(const UnitSpec& spec) {
     // Без этой проверки лучник с нулевой дальностью молча никогда не стреляет.
     // У мага и целителя в тех же колонках лежат сила (шанс или лечение) и радиус.
     switch (spec.kind) {
+    case UnitKind::GulyayGorod:
+        if (spec.maxHp != fort::GulyayGorod::kMaxDurability || spec.melee != 0 ||
+            spec.ranged != 0 || spec.range != 0 || spec.defense != 0) {
+            throw DataError("характеристики укрепления заданы классом Гуляй-город");
+        }
+        break;
     case UnitKind::Archer:
         if (spec.ranged == 0 || spec.range == 0) {
             throw DataError("у лучника выстрел и дальность должны быть больше нуля");

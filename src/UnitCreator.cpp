@@ -1,6 +1,7 @@
 #include "UnitCreator.h"
 #include "Healer.h"
 #include "Mage.h"
+#include "GulyayGorodAdapter.h"
 
 namespace {
 
@@ -48,6 +49,14 @@ public:
     }
 };
 
+class GulyayGorodCreator : public UnitCreator {
+public:
+    UnitKind kind() const override { return UnitKind::GulyayGorod; }
+    std::unique_ptr<Unit> create(const UnitSpec& spec, std::string name) const override {
+        return std::make_unique<GulyayGorodAdapter>(std::move(name), spec.cost);
+    }
+};
+
 }  // namespace
 
 // Новый тип юнита - новый создатель и одна строка здесь
@@ -57,7 +66,8 @@ const UnitCreator& UnitCreator::forKind(UnitKind kind) {
     static const ArcherCreator archer;
     static const MageCreator mage;
     static const HealerCreator healer;
-    static const UnitCreator* const all[] = {&light, &heavy, &archer, &mage, &healer};
+    static const GulyayGorodCreator fort;
+    static const UnitCreator* const all[] = {&light, &heavy, &archer, &mage, &healer, &fort};
     for (const UnitCreator* creator : all) {
         if (creator->kind() == kind) return *creator;
     }
