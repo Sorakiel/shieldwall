@@ -187,17 +187,16 @@ void testPlaybackRatesAndScrolling() {
     for (const auto speed : presentation::Speeds) {
         presentation::Step step;
         step.event.type = EventType::Shot;
-        const auto seconds = presentation::duration(step.event.type) * 2 / speed;
+        const auto seconds = presentation::duration(step.event.type) / speed;
         CHECK(!step.advance(presentation::playbackSeconds(seconds * .49f, speed)));
         CHECK(step.advance(presentation::playbackSeconds(seconds * .02f, speed)));
         CHECK(!step.advance(presentation::playbackSeconds(seconds, speed, true)));
         CHECK(step.advance(presentation::playbackSeconds(seconds, speed)) == false);
         CHECK(step.finished());
     }
-    CHECK(presentation::playbackSeconds(2, .5f) == .5f);
-    CHECK(presentation::playbackSeconds(2, 1) == 1);
-    CHECK(presentation::playbackSeconds(2, 2) == 2);
-    CHECK(presentation::playbackSeconds(2, 4) == 4);
+    CHECK(presentation::playbackSeconds(2, .5f) == 1);
+    CHECK(presentation::playbackSeconds(2, 1) == 2);
+    CHECK(presentation::playbackSeconds(2, 2) == 4);
     CHECK(presentation::playbackSeconds(2, 1, true) == 0);
     presentation::Scroll scroll(0, 10);
     CHECK(scroll.value() == 0);

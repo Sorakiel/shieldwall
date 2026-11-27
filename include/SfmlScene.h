@@ -13,7 +13,7 @@
 namespace sfmlui {
 inline constexpr float Width = 1440.f, Height = 900.f;
 inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 104, Speed = 105, Pause = 106,
-                     Speed2 = 107, Speed4 = 108, SpeedHalf = 109;
+                     Speed2 = 107, SpeedHalf = 109;
 inline constexpr int RemoveBase = 1000;
 inline constexpr float FooterButtonWidth = 246.f, FooterGap = 12.f, FooterHeight = 52.f;
 inline constexpr sf::Vector2f RosterCardSize{139.f, 140.f};

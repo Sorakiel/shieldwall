@@ -850,7 +850,8 @@ void Scene::army(const State& s, int team) {
         const float width = 438.f * PageUnits / a.units.size();
         const float at = std::clamp(display / presentation::maxOffset(a.units.size(), PageUnits), 0.f, 1.f);
         box(left, 660, 438, 3, raised, 1);
-        box(left + at * (438 - width), 660, width, 3, alpha(color, .65f), 1);
+        // Both thumbs follow the formation from its front towards its rear.
+        box(left + (team == 0 ? 1 - at : at) * (438 - width), 660, width, 3, alpha(color, .65f), 1);
     }
     const auto first = static_cast<std::size_t>(std::floor(std::max(0.f, display)));
     const auto last = std::min(a.units.size(), static_cast<std::size_t>(std::ceil(display + PageUnits)));
@@ -893,11 +894,11 @@ void Scene::field(const State& s) {
         button("Сохранить", 32 + 2 * step, 778, FooterButtonWidth, Save, true, false, FooterHeight);
         button("В главное меню", 32 + 3 * step, 778, FooterButtonWidth, 0, true, false, FooterHeight);
         label("Enter / пробел — следующий ход     A — автобой     S — сохранить", 34, 851, 11, muted);
-        label("Скорость", 575, 109, 12, muted);
-        const int speedActions[] = {SpeedHalf, Speed, Speed2, Speed4};
-        const std::string speedNames[] = {"0.5×", "1×", "2×", "4×"};
+        label("Скорость", 643, 109, 12, muted);
+        const int speedActions[] = {SpeedHalf, Speed, Speed2};
+        const std::string speedNames[] = {"0.5×", "1×", "2×"};
         for (std::size_t i = 0; i < presentation::Speeds.size(); ++i) {
-            const float x = 650.f + i * 68.f;
+            const float x = 718.f + i * 68.f;
             const bool selected = s.speed == presentation::Speeds[i];
             if (selected) {
                 box(x - 4, 101, 70, 36, alpha(gold, .12f), 12);
