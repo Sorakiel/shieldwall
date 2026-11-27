@@ -34,8 +34,14 @@ namespace {
             if (Mage* mage = dynamic_cast<Mage*>(unit)) {
                 const auto result = mage->cast(army, i, rng);
                 if (result.performed) {
-                    events.push_back({ result.success ? EventType::Clone : EventType::CloneFailed,
-                                       turn, team, mage->name(), result.target });
+                    BattleEvent event{ result.success ? EventType::Clone : EventType::CloneFailed,
+                                       turn, team, mage->name(), result.target };
+                    event.sourceIndex = result.sourceIndex;
+                    if (result.success) {
+                        event.cloneName = result.cloneName;
+                        event.cloneHp = result.cloneHp;
+                    }
+                    events.push_back(event);
                 }
                 // Копия вставлена перед магом: не даём ему второе действие.
                 if (result.success) ++i;
@@ -61,11 +67,25 @@ namespace {
         return unit->hp() < 0 ? 0 : unit->hp();
     }
 
+    int applyHit(Unit& target, int attack) {
+        const int before = target.hp();
+        target.takeDamage(damageOf(attack, target.defense()));
+        return before - hpLeftOf(&target);
+    }
+
+    bool hasActiveFighter(Army& army) {
+        for (std::size_t i = 0; i < army.size(); ++i) {
+            const Unit* unit = army.at(i);
+            if (unit->isAlive() && unit->kind() != UnitKind::GulyayGorod) return true;
+        }
+        return false;
+    }
+
     // Один ближний удар. Атакующий — front своей армии. Если он мёртв — Miss.
     void meleeStrike(Army& attacker, Army& defender, int attackerTeam, int turn,
         std::vector<BattleEvent>& events) {
         Unit* actor = attacker.front();
-        if (!actor) return;
+        if (!actor || actor->kind() == UnitKind::GulyayGorod) return;
 
         if (!actor->isAlive()) {
             events.push_back({ EventType::Miss, turn, attackerTeam, actor->name(), "", 0, 0 });
@@ -75,8 +95,7 @@ namespace {
         Unit* target = defender.front();
         if (!target) return;
 
-        const int dmg = damageOf(actor->meleeAttack(), target->defense());
-        target->takeDamage(dmg);
+        const int dmg = applyHit(*target, actor->meleeAttack());
         events.push_back({ EventType::Melee, turn, attackerTeam,
                           actor->name(), target->name(), dmg, hpLeftOf(target) });
         if (!target->isAlive()) {
@@ -111,8 +130,7 @@ namespace {
             }
 
             Unit* tgt = target.at(static_cast<std::size_t>(pick));
-            const int dmg = damageOf(archer->rangedAttack(), tgt->defense());
-            tgt->takeDamage(dmg);
+            const int dmg = applyHit(*tgt, archer->rangedAttack());
             events.push_back({ EventType::Shot, turn, shooterTeam,
                               unit->name(), tgt->name(), dmg, hpLeftOf(tgt) });
             if (!tgt->isAlive()) {
@@ -145,7 +163,7 @@ BattleEngine::BattleEngine(Army& a, Army& b, std::uint32_t seed)
 }
 
 bool BattleEngine::finished() const {
-    return a_.isDefeated() || b_.isDefeated() || turn_ >= MaxTurns;
+    return winner() != -1;
 }
 
 int BattleEngine::winner() const {
@@ -155,7 +173,7 @@ int BattleEngine::winner() const {
     if (aDead) return 1;
     if (bDead) return 0;
     // Победа на последнем разрешённом ходу имеет приоритет над лимитом.
-    if (turn_ >= MaxTurns) return -2;
+    if (turn_ >= MaxTurns || (!hasActiveFighter(a_) && !hasActiveFighter(b_))) return -2;
     return -1;
 }
 

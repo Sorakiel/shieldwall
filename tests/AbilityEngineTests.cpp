@@ -5,6 +5,7 @@
 #include "BattleReplay.h"
 #include "EventFormatter.h"
 #include "Healer.h"
+#include "GulyayGorodAdapter.h"
 #include "Mage.h"
 #include "SaveService.h"
 #include "UnitDecorator.h"
@@ -39,7 +40,8 @@ namespace {
             const auto& x = a[i]; const auto& y = b[i];
             if (x.type != y.type || x.turn != y.turn || x.team != y.team ||
                 x.actor != y.actor || x.target != y.target || x.damage != y.damage ||
-                x.hpLeft != y.hpLeft || x.restored != y.restored || x.buff != y.buff) return false;
+                x.hpLeft != y.hpLeft || x.restored != y.restored || x.buff != y.buff ||
+                x.sourceIndex != y.sourceIndex || x.cloneName != y.cloneName || x.cloneHp != y.cloneHp) return false;
         }
         return true;
     }
@@ -209,6 +211,53 @@ namespace {
         CHECK(all.back().turn == BattleEngine::MaxTurns);
     }
 
+    void testFortifications() {
+        Army a, b;
+        a.add(std::make_unique<GulyayGorodAdapter>("A", 42));
+        b.add(std::make_unique<GulyayGorodAdapter>("B", 42));
+        BattleEngine engine(a, b, 5);
+        CHECK(engine.finished() && engine.winner() == -2 && engine.nextTurn().empty());
+
+        Army fighters;
+        fighters.add(std::make_unique<HeavyUnit>("Front", 20, 10, 0, 1));
+        fighters.add(std::make_unique<Archer>("Rear", 20, 1, 1, 3, 0, 1));
+        BattleEngine mixed(fighters, b, 5);
+        const auto turn = mixed.nextTurn();
+        CHECK(!mixed.finished() && fighters.front()->hp() == 20 && b.front()->hp() == 844);
+        CHECK(count(turn, EventType::Melee) == 1 && count(turn, EventType::Shot) == 1);
+        for (const auto& e : turn) {
+            if (e.type == EventType::Melee) CHECK(e.damage == 6 && e.hpLeft == 844);
+            if (e.type == EventType::Shot) CHECK(e.damage == 0 && e.hpLeft == 844);
+        }
+
+        Army c, d;
+        c.add(std::make_unique<Archer>("Guard", 1, 1, 1, 1, 0, 1));
+        c.add(std::make_unique<GulyayGorodAdapter>("C", 42));
+        d.add(std::make_unique<GulyayGorodAdapter>("D", 42));
+        // Dead fighters still in formation cannot prevent a draw.
+        c.front()->takeDamage(1);
+        BattleEngine remaining(c, d, 1);
+        CHECK(remaining.finished() && remaining.winner() == -2);
+    }
+
+    void testCloneEventWithDuplicateNames() {
+        Army a, b;
+        for (int i = 0; i < 2; ++i)
+            a.add(std::make_unique<LightUnit>("Дарр", 20, 1, 0, 1));
+        a.at(1)->takeDamage(19);
+        a.add(std::make_unique<Mage>("Маг", 20, 1, 100, 1, 0, 1));
+        addFront(b);
+        BattleEngine engine(a, b, 9);
+        const auto events = engine.nextTurn();
+        const auto clone = std::find_if(events.begin(), events.end(),
+            [](const BattleEvent& e) { return e.type == EventType::Clone; });
+        CHECK(clone != events.end());
+        if (clone == events.end()) return;
+        CHECK(clone->sourceIndex == 1 && clone->target == "Дарр");
+        CHECK(clone->cloneHp == 1 && clone->cloneName == "Дарр [Клон 1]");
+        CHECK(a.at(2)->hp() == clone->cloneHp && a.at(2)->name() == clone->cloneName);
+    }
+
     void testFormatting() {
         std::mt19937 rng(1);
         for (EventType type : { EventType::Clone, EventType::CloneFailed, EventType::Heal, EventType::Buff }) {
@@ -229,6 +278,8 @@ int main() {
     testBuffLimitAndReset();
     testSaveReplay();
     testTurnLimit();
+    testFortifications();
+    testCloneEventWithDuplicateNames();
     testFormatting();
     if (failures) return 1;
     std::cout << "Ability engine tests passed\n";
