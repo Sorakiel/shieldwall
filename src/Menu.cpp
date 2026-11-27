@@ -16,6 +16,7 @@
 #include "BattleRunner.h"
 #include "EventFormatter.h"
 #include "SaveSlots.h"
+#include "UnitPresentation.h"
 
 namespace {
 
@@ -72,7 +73,8 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAca
         army.totalCost = builders[index]->spent();
         for (const auto& record : builders[index]->units()) {
             army.units.push_back(
-                {record.spec.kind, record.name, record.spec.maxHp, record.spec.maxHp, record.spec.cost,
+                {record.spec.kind, record.name, unitui::startingHp(record.spec.kind, record.spec.maxHp),
+                 record.spec.maxHp, record.spec.cost,
                  record.spec.melee, record.spec.defense,
                  record.spec.kind == UnitKind::Archer ? record.spec.ranged : 0});
         }
@@ -84,22 +86,6 @@ RecruitmentSnapshot recruitmentFrame(const Builders& builders, const MilitaryAca
                                 spec.ranged, spec.range, sample.defense(), active.canBuy(spec.kind)});
     }
     return frame;
-}
-
-std::uint32_t buyAction(UnitKind kind) {
-    switch (kind) {
-    case UnitKind::Light:
-        return 1;
-    case UnitKind::Heavy:
-        return 2;
-    case UnitKind::Archer:
-        return 3;
-    case UnitKind::Mage:
-        return 4;
-    case UnitKind::Healer:
-        return 5;
-    }
-    return 0;
 }
 
 BuildResult recruitFromAcademy(ArmyBuilder& draft, const MilitaryAcademy& academy, UnitKind kind,
@@ -474,7 +460,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
                 choices = {{1, "Случайный набор"}, {2, "Ручной набор"}, {3, "Набор по цене"}};
             } else {
                 for (const auto& offer : frame.offers)
-                    choices.push_back({buyAction(offer.kind),
+                    choices.push_back({unitui::buyAction(offer.kind),
                                        std::string("Купить: ") + unitKindName(offer.kind), offer.enabled});
             }
             // Console actions; SFML exposes these edits directly on the cards.
@@ -543,7 +529,7 @@ void Menu::run(const std::vector<std::string>& initialMessages) {
             } else {
                 const auto purchase =
                     std::find_if(frame.offers.begin(), frame.offers.end(),
-                                 [&](const RecruitmentOffer& o) { return buyAction(o.kind) == *choice; });
+                                 [&](const RecruitmentOffer& o) { return unitui::buyAction(o.kind) == *choice; });
                 if (purchase != frame.offers.end())
                     outcome = recruitFromAcademy(*builders[team], academy, purchase->kind, armyRng);
                 else if (*choice == 20 || *choice == 21) {

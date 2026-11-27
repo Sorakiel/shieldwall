@@ -123,6 +123,29 @@ void testRecruitment() {
     CHECK(empty.str().find("\n\nВ армии пока нет бойцов.\n\n|") != std::string::npos);
 }
 
+void testFortificationTables() {
+    auto frame = example();
+    frame.offers.push_back({UnitKind::GulyayGorod, 42, 1000, 0, 0, 0, 0, true});
+    frame.armies[0].units.insert(frame.armies[0].units.begin(),
+                                 {UnitKind::GulyayGorod, "Укрепление", 850, 1000, 42});
+    std::istringstream input;
+    std::ostringstream output;
+    ConsoleView view(input, output);
+    view.showRecruitment(frame);
+    const auto blocks = tables(output.str());
+    CHECK(blocks.size() == 2 && blocks[0].size() == 6 && blocks[1].size() == 6);
+    for (const auto& block : blocks) checkTable(block);
+    CHECK(output.str().find("Гуляй-город") != std::string::npos);
+    CHECK(output.str().find("Прочность 850/1000") != std::string::npos);
+    CHECK(output.str().find("Броня 40%") != std::string::npos);
+    CHECK(output.str().find("Не лечится и не клонируется") != std::string::npos);
+    BattleSnapshot battle;
+    battle.armies = frame.armies;
+    battle.armies[0].units[0].hp = 844;
+    view.showArmies(battle);
+    CHECK(output.str().find("Прочность 844/1000") != std::string::npos);
+}
+
 void testArmies() {
     BattleSnapshot frame;
     frame.armies[0] = example().armies[0];
@@ -312,6 +335,7 @@ int main() {
     testTurnBlocksAndColors();
     testEquipmentLabels();
     testRecruitment();
+    testFortificationTables();
     testArmies();
     testSaves();
     testWideAndCombiningNames();

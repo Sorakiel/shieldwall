@@ -23,6 +23,7 @@ const char* unitKindName(UnitKind kind) {
     case UnitKind::Archer: return "Лучник";
     case UnitKind::Mage: return "Маг";
     case UnitKind::Healer: return "Целитель";
+    case UnitKind::GulyayGorod: return "Гуляй-город";
     }
     return "Боец";
 }
@@ -32,6 +33,8 @@ std::string specialActionDescription(UnitKind kind, int power, int range) {
     case UnitKind::Light:
         return "Снаряжение: шанс 25% | тяжёлому соседу | до 1 бонуса на армию за ход";
     case UnitKind::Heavy: return "Без особой способности";
+    case UnitKind::GulyayGorod:
+        return "Не атакует | Не лечится и не клонируется";
     case UnitKind::Archer:
         return "Выстрел: атака " + std::to_string(power) + " | дальность " + std::to_string(range) + " | не с первой позиции";
     case UnitKind::Mage:

@@ -214,7 +214,12 @@ void testBattleResumeAndResult(const UnitCatalog& catalog) {
     ConsoleUI resultUi(loadedResult);
     Menu(resultUi, catalog, file.path).run();
     CHECK(loadedResult.turns.size() == 1);
-    CHECK(loadedResult.hasMessage("Итог: победили"));
+    std::istringstream noInput;
+    std::ostringstream resultText;
+    ConsoleUI expectedUi(noInput, resultText);
+    expectedUi.showResult(expected.engine->winner());
+    const auto expectedResult = resultText.str();
+    CHECK(loadedResult.hasMessage(expectedResult.substr(0, expectedResult.size() - 1)));
     CHECK(SaveService::loadFromFile(file.path).turn == result.turn);
 }
 
@@ -320,7 +325,7 @@ void testConsoleCancellationAndNavigation(const UnitCatalog& catalog) {
     {
         SaveFile file;
         // Cancel remove, and both the source and destination position of move.
-        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n6\n0\n7\n0\n7\n1\n0\n9\n1\n7\n0\n0\n");
+        std::istringstream input("1\n50\n0\n2\n1\n2\n1\n1\n7\n0\n8\n0\n8\n1\n0\n10\n1\n7\n0\n0\n");
         std::ostringstream output;
         ConsoleUI ui(input, output);
         Menu(ui, catalog, file.path).run();
@@ -355,7 +360,7 @@ void testSpecialUnitRecruitment(const UnitCatalog& catalog) {
     CHECK(partial.armyA.size() == 2 && partial.armyB.empty());
     if (partial.armyA.size() == 2) {
         CHECK(partial.armyA[0].spec.kind == UnitKind::Mage);
-        CHECK(partial.armyA[0].spec.ranged == 60 && partial.armyA[0].spec.range == 3);
+        CHECK(partial.armyA[0].spec.ranged == 10 && partial.armyA[0].spec.range == 3);
         CHECK(partial.armyA[1].spec.kind == UnitKind::Healer);
         CHECK(partial.armyA[1].spec.ranged == 8 && partial.armyA[1].spec.range == 3);
     }
@@ -413,14 +418,14 @@ void testArmyFactorySelection(const UnitCatalog& catalog) {
 
 void testConsoleSpecialUnits(const UnitCatalog& catalog) {
     SaveFile file;
-    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n9\n3\n7\n0\n0\n");
+    std::istringstream input("1\n70\n9\n2\n1\n2\n4\n5\n10\n3\n7\n0\n0\n");
     std::ostringstream output;
     ConsoleUI ui(input, output);
     Menu(ui, catalog, file.path).run();
     const auto saved = SaveService::loadFromFile(file.path);
     CHECK(saved.armyA.size() == 2 && saved.phase == SavePhase::Battle);
     CHECK(contains(output.str(), "Купить: Маг") && contains(output.str(), "Купить: Целитель"));
-    CHECK(contains(output.str(), "Клонирование: шанс 60%") && contains(output.str(), "Лечение: до 8 здоровья"));
+    CHECK(contains(output.str(), "Клонирование: шанс 10%") && contains(output.str(), "Лечение: до 8 здоровья"));
     CHECK(contains(output.str(), "Набор по цене"));
     CHECK(!contains(output.str(), "Сохранить") && contains(output.str(), "Очистить армию"));
     // Catalog order and a smaller set of unit types must not change purchase action mapping.
@@ -437,6 +442,103 @@ void testConsoleSpecialUnits(const UnitCatalog& catalog) {
         CHECK(result.armyA[0].spec.kind == UnitKind::Healer);
         CHECK(result.armyA[1].spec.kind == UnitKind::Mage);
     }
+}
+
+void testFortificationRecruitment(const UnitCatalog& catalog) {
+    SaveFile file;
+    ScriptView first;
+    first.numbers = {90, 9};
+    first.actions = {1, 2, 1, 2, 6, 1, 0, 0};
+    ConsoleUI ui(first);
+    Menu(ui, catalog, file.path).run();
+    const auto saved = SaveService::loadFromFile(file.path);
+    CHECK(first.actions.empty());
+    CHECK(saved.phase == SavePhase::Recruitment && saved.armyA.size() == 2);
+    if (saved.armyA.size() != 2) return;
+    CHECK(saved.armyA[0].spec.kind == UnitKind::GulyayGorod);
+    CHECK(saved.armyA[0].spec.maxHp == 1000 && saved.armyA[0].spec.cost == 42);
+    CHECK(saved.armyA[1].spec.kind == UnitKind::Light);
+    bool enabled = false, disabled = false, visible = false;
+    for (const auto& menu : first.menus) for (const auto& choice : menu)
+        if (choice.label == "Купить: Гуляй-город") {
+            CHECK(choice.value == 6);
+            enabled = enabled || choice.enabled;
+            disabled = disabled || !choice.enabled;
+        }
+    for (const auto& frame : first.drafts) for (const auto& unit : frame.armies[0].units)
+        if (unit.kind == UnitKind::GulyayGorod) {
+            visible = true;
+            CHECK(unit.hp == 850 && unit.maxHp == 1000 && unit.attack == 0);
+        }
+    CHECK(enabled && disabled && visible);
+    ScriptView loaded;
+    loaded.actions = {2, 1, 2, 1, 30, 2, 6, 30, 0, 0};
+    ConsoleUI loadedUi(loaded);
+    Menu(loadedUi, catalog, file.path).run();
+    const auto ready = SaveService::loadFromFile(file.path);
+    CHECK(loaded.actions.empty());
+    CHECK(ready.phase == SavePhase::Battle);
+    CHECK(recordsText(ready.armyA) == recordsText(saved.armyA));
+    CHECK(ready.armyB.size() == 1 && ready.armyB[0].spec.kind == UnitKind::GulyayGorod);
+    auto battle = BattleReplay::replay(ready);
+    battle.armyA->at(0)->takeDamage(10);
+    ScriptView live;
+    ConsoleUI liveUi(live);
+    liveUi.showArmies(*battle.armyA, *battle.armyB);
+    CHECK(live.frames.back().armies[0].units[0].hp == 844);
+    CHECK(live.frames.back().armies[0].units[0].maxHp == 1000);
+    CHECK(live.frames.back().armies[1].units[0].hp == 850);
+
+    // The console numbers catalog entries; internal action IDs stay stable.
+    std::istringstream source("version;1\ngulyay_gorod;1000;0;0;0;0;42\nhealer;18;2;8;3;0;22\n");
+    const auto reordered = UnitCatalog::loadFromStream(source, "fort-first");
+    SaveFile other;
+    std::istringstream commands("1\n90\n9\n2\n1\n2\n1\n2\n0\n0\n");
+    std::ostringstream output;
+    ConsoleUI console(commands, output);
+    Menu(console, reordered, other.path).run();
+    const auto draft = SaveService::loadFromFile(other.path);
+    CHECK(draft.armyA.size() == 2);
+    if (draft.armyA.size() == 2) {
+        CHECK(draft.armyA[0].spec.kind == UnitKind::GulyayGorod);
+        CHECK(draft.armyA[1].spec.kind == UnitKind::Healer);
+    }
+    CHECK(contains(output.str(), "Прочность 850/1000") && contains(output.str(), "Броня 40%"));
+    CHECK(contains(output.str(), "Не лечится и не клонируется"));
+}
+
+void testFortificationBudgetAndGeneration(const UnitCatalog& catalog) {
+    for (const auto budget : {41u, 42u}) {
+        SaveFile file;
+        ScriptView view;
+        view.numbers = {budget, 9};
+        view.actions = {1, 2, 1, 2, 6, 0, 0};
+        ConsoleUI ui(view);
+        Menu(ui, catalog, file.path).run();
+        const auto saved = SaveService::loadFromFile(file.path);
+        CHECK(saved.armyA.size() == (budget == 42 ? 1u : 0u));
+        bool enabled = false, disabled = false;
+        for (const auto& menu : view.menus) for (const auto& choice : menu)
+            if (choice.label == "Купить: Гуляй-город") {
+                enabled = enabled || choice.enabled;
+                disabled = disabled || !choice.enabled;
+            }
+        CHECK(enabled == (budget == 42) && disabled);
+        CHECK(view.hasMessage("Недостаточно бюджета") == (budget == 41));
+    }
+    SaveFile file;
+    ScriptView view;
+    view.numbers = {42, 9};
+    view.actions = {1, 2, 1, 3, 0, 0};
+    ConsoleUI ui(view);
+    Menu(ui, catalog, file.path).run();
+    bool shown = false;
+    for (const auto& frame : view.drafts) if (!frame.armies[0].units.empty()) {
+        const auto& unit = frame.armies[0].units[0];
+        CHECK(unit.kind == UnitKind::GulyayGorod && unit.hp == 850 && unit.maxHp == 1000);
+        shown = true;
+    }
+    CHECK(shown);
 }
 
 void testClosingViewKeepsCompletedTurn(const UnitCatalog& catalog) {
@@ -474,6 +576,8 @@ int main() {
     testArmyFactorySelection(catalog);
     testConsoleSpecialUnits(catalog);
     testConsoleCancellationAndNavigation(catalog);
+    testFortificationRecruitment(catalog);
+    testFortificationBudgetAndGeneration(catalog);
     testClosingViewKeepsCompletedTurn(catalog);
     std::cout << (failures == 0 ? "All session tests passed\n" : "Session tests failed\n");
     return failures == 0 ? 0 : 1;

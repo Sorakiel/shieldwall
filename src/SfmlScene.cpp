@@ -1,5 +1,6 @@
 #include "SfmlScene.h"
 #include "EquipmentGlyphs.h"
+#include "UnitPresentation.h"
 #include <cmath>
 #include <stdexcept>
 namespace sfmlui {
@@ -30,6 +31,8 @@ sf::Color typeColor(UnitKind k) {
         return violet;
     case UnitKind::Healer:
         return green;
+    case UnitKind::GulyayGorod:
+        return sf::Color(158, 172, 183);
     }
     return paper;
 }
@@ -264,6 +267,26 @@ void Scene::warrior(UnitKind kind, float x, float y, float z, sf::Color color, b
                metal = alpha(sf::Color(204, 204, 188), opacity);
     const float d = left ? -1.f : 1.f;
     auto p = [&](float a, float b) { return sf::Vector2f(x + a * z * d, y + b * z); };
+    if (unitui::fortified(kind)) {
+        // A wall of shields on wheels, with no human silhouette or weapon.
+        polygon({p(-.48f, .15f), p(.48f, .15f), p(.48f, .76f), p(-.48f, .76f)}, dark);
+        for (int i = 0; i < 4; ++i) {
+            const float a = -.43f + i * .22f;
+            polygon({p(a, .20f), p(a + .19f, .20f), p(a + .19f, .70f), p(a, .70f)}, c);
+            line(p(a + .095f, .32f), p(a + .095f, .43f), dark, z * .035f);
+            const auto rivet = p(a + .095f, .62f);
+            disc(rivet.x, rivet.y, z * .022f, metal);
+        }
+        line(p(-.47f, .15f), p(.47f, .15f), metal, z * .045f);
+        line(p(-.49f, .76f), p(.49f, .76f), metal, z * .06f);
+        for (const float a : {-.3f, .3f}) {
+            const auto wheel = p(a, .85f);
+            disc(wheel.x, wheel.y, z * .13f, dark);
+            disc(wheel.x, wheel.y, z * .09f, metal);
+            disc(wheel.x, wheel.y, z * .035f, c);
+        }
+        return;
+    }
     polygon({p(-.28f, .36f), p(.22f, .34f), p(.38f, .91f), p(-.4f, .91f)}, alpha(color, .32f * opacity));
     line(p(-.12f, .65f), p(-.17f, .98f), dark, z * .11f);
     line(p(.12f, .65f), p(.2f, .98f), dark, z * .11f);
@@ -495,32 +518,37 @@ void Scene::recruitment(const State& s) {
             const float step = 1340.f / std::max<std::size_t>(r.offers.size(), 1), x = 50.f + i * step,
                         w = step - 14;
             box(x, 214, w, 320, panel, 14, o.enabled ? border : alpha(border, .5f));
-            label(unitKindName(o.kind), x + 18, 228, 29, paper, true);
+            unsigned titleSize = 29;
+            while (titleSize > 20 && textWidth(u8(unitKindName(o.kind)), titleSize, true) > w - 36)
+                --titleSize;
+            label(unitKindName(o.kind), x + 18, 228, titleSize, paper, true);
             label(moneyCount(static_cast<std::size_t>(o.cost)), x + 18, 268, 12, gold);
-            warrior(o.kind, x + w - 44, 250, 42, typeColor(o.kind), false, o.enabled ? 1.f : .4f);
+            warrior(o.kind, x + w - 44, unitui::fortified(o.kind) ? 264.f : 250.f,
+                    unitui::fortified(o.kind) ? 34.f : 42.f, typeColor(o.kind), false,
+                    o.enabled ? 1.f : .4f);
             box(x + 14, 304, w - 28, 82, raised, 8);
-            const std::pair<const char*, int> stats[] = {
-                {"Здоровье", o.hp}, {"Атака", o.melee}, {"Защита", o.defense}};
+            const std::pair<const char*, std::string> stats[] = {
+                {unitui::healthName(o.kind), unitui::academyHealth(o.kind, o.hp)},
+                {"Атака", unitui::attackValue(o.kind, o.melee)},
+                {unitui::defenseName(o.kind), unitui::defenseValue(o.kind, o.defense)}};
             for (int row = 0; row < 3; ++row) {
                 const float y = 310.f + row * 24.f;
                 label(stats[row].first, x + 24, y, 14, paper);
-                const auto value = fit(std::to_string(stats[row].second), w - 130, 16);
+                const auto value = fit(stats[row].second, w - 130, 16);
                 text(value, x + w - 24 - textWidth(value, 16), y - 1, 16, gold);
             }
             label("СПОСОБНОСТЬ", x + 18, 400, 10, muted);
             auto desc = specialActionDescription(o.kind, o.ranged, o.range);
             std::replace(desc.begin(), desc.end(), '|', '\n');
-            paragraph(desc, x + 18, 418, w - 36, 11, typeColor(o.kind), 3);
-            const std::uint32_t id = o.kind == UnitKind::Light    ? 1
-                                     : o.kind == UnitKind::Heavy  ? 2
-                                     : o.kind == UnitKind::Archer ? 3
-                                     : o.kind == UnitKind::Mage   ? 4
-                                                                  : 5;
+            paragraph(desc, x + 18, 418, w - 36, r.offers.size() > 5 ? 10 : 11, typeColor(o.kind),
+                      r.offers.size() > 5 ? 4 : 3);
+            const auto id = unitui::buyAction(o.kind);
             const auto choice = std::find_if(s.choices.begin(), s.choices.end(), [&](const MenuChoice& c) {
                 return c.value == id && c.label.rfind("Купить:", 0) == 0;
             });
             if (choice != s.choices.end())
-                button("Нанять", x + 18, 482, w - 36, static_cast<int>(id), choice->enabled, false, 40);
+                button(unitui::fortified(o.kind) ? "Построить" : "Нанять", x + 18, 482, w - 36,
+                       static_cast<int>(id), choice->enabled, false, 40);
         }
         actions(s, 50, 800, 1340, 4);
     }
@@ -654,7 +682,8 @@ void Scene::army(const State& s, int team) {
         box(x, 297, 84, 264, actor ? sf::Color(44, 51, 51) : panel, 12,
             (actor || target) ? alpha(color, .8f) : alpha(border, .75f));
         box(x + 8, 315, 68, 3, typeColor(u.kind), 1);
-        label(unitKindName(u.kind), x + 8, 331, 10, typeColor(u.kind));
+        text(fit(unitKindName(u.kind), 68, unitui::fortified(u.kind) ? 9 : 10), x + 8, 331,
+             unitui::fortified(u.kind) ? 9 : 10, typeColor(u.kind));
         disc(x + 42, 288, 11, i == 0 ? color : raised);
         label(std::to_string(i + 1), x + 38, 280, 10, i == 0 ? ink : muted);
         warrior(u.kind, x + 42, 351, 58, typeColor(u.kind), team == 1, opacity);
@@ -668,10 +697,12 @@ void Scene::army(const State& s, int team) {
         const auto statColor =
             target && s.effect && s.effect->event.type == EventType::Buff && s.effect->committed ? gold
                                                                                                  : paper;
-        text(fit("Атака " + std::to_string(u.attack), 68, 11), x + 8, 462, 11, statColor);
-        text(fit("Защита " + std::to_string(u.defense), 68, 11), x + 8, 480, 11, statColor);
+        text(fit("Атака " + unitui::attackValue(u.kind, u.attack), 68, 11), x + 8, 462, 11, statColor);
+        text(fit(std::string(unitui::defenseName(u.kind)) + " " + unitui::defenseValue(u.kind, u.defense), 68, 11), x + 8, 480, 11, statColor);
         if (u.kind == UnitKind::Archer)
             text(fit("Выстрел " + std::to_string(u.rangedAttack), 68, 10), x + 8, 500, 10, typeColor(u.kind));
+        else if (unitui::fortified(u.kind))
+            label("Прочность", x + 8, 500, 10, muted);
         label(std::to_string(std::max(0, u.hp)) + " / " + std::to_string(u.maxHp), x + 8, 522, 10, muted);
         box(x + 8, 542, 68, 5, ink, 2);
         const float ratio = u.maxHp > 0 ? std::clamp(static_cast<float>(u.hp) / u.maxHp, 0.f, 1.f) : 0;
@@ -681,9 +712,10 @@ void Scene::army(const State& s, int team) {
             const float tx = std::clamp(x - 40, 48.f, 760.f);
             box(tx, 573, 312, 79, raised, 9, gold);
             text(fit(battletext::icons(u.name), 250, 14), tx + 12, 586, 14, paper);
-            text(fit("Здоровье " + std::to_string(u.hp) + "/" + std::to_string(u.maxHp), 288, 12), tx + 12,
+            text(fit(std::string(unitui::healthName(u.kind)) + " " + std::to_string(u.hp) + "/" + std::to_string(u.maxHp), 288, 12), tx + 12,
                  608, 12, muted);
-            text(fit("Атака " + std::to_string(u.attack) + " · Защита " + std::to_string(u.defense) +
+            text(fit("Атака " + unitui::attackValue(u.kind, u.attack) + " · " +
+                         unitui::defenseName(u.kind) + " " + unitui::defenseValue(u.kind, u.defense) +
                          (u.kind == UnitKind::Archer ? " · Выстрел " + std::to_string(u.rangedAttack) : ""),
                      288, 12),
                  tx + 12, 628, 12, paper);
