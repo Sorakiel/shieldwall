@@ -16,9 +16,9 @@ int main(int argc, char** argv) {
         settings.antiAliasingLevel = 4;
         sf::RenderTexture target({1440, 900}, settings);
         int frames = 0;
-        auto render = [&](const std::string& name, const State& state) {
+        auto render = [&](const std::string& name, const State& state, sf::Vector2f mouse = {-1.f, -1.f}) {
             target.clear();
-            scene.draw(target, state);
+            scene.draw(target, state, mouse);
             target.display();
             for (const auto& bounds : scene.textBounds()) {
                 if (bounds.position.x < -1 || bounds.position.y < -1 ||
@@ -105,8 +105,9 @@ int main(int argc, char** argv) {
         s.recruitment.offers = {{UnitKind::Light, 10, 20, 7, 0, 0, 1, true},
                                 {UnitKind::Heavy, 30, 45, 9, 0, 0, 5, false},
                                 {UnitKind::Archer, 18, 16, 4, 11, 3, 0, false},
-                                {UnitKind::Mage, 25, 14, 2, 60, 3, 0, false},
-                                {UnitKind::Healer, 22, 18, 2, 8, 3, 0, false}};
+                                {UnitKind::Mage, 25, 14, 2, 10, 3, 0, false},
+                                {UnitKind::Healer, 22, 18, 2, 8, 3, 0, false},
+                                {UnitKind::GulyayGorod, 42, 1000, 0, 0, 0, 0, false}};
         s.choices = {
             {1, "Случайный набор"}, {2, "Ручной набор"},     {3, "Набор по цене"},
             {20, "Удалить бойца"},   {21, "Переместить бойца"},       {uiAction::ClearArmy, "Очистить армию"},
@@ -161,6 +162,7 @@ int main(int argc, char** argv) {
                      {3, "Купить: Лучник", false},
                      {4, "Купить: Маг", false},
                      {5, "Купить: Целитель", false},
+                     {6, "Купить: Гуляй-город", false},
                      {20, "Удалить бойца"},
                      {21, "Переместить бойца"},
                      {uiAction::ClearArmy, "Очистить армию"},
@@ -177,6 +179,23 @@ int main(int argc, char** argv) {
             for (const auto& button : scene.buttons())
                 if (button.action == action)
                     throw std::runtime_error("Legacy army dialog button is visible");
+        State fortAcademy = s;
+        fortAcademy.recruitment.spent = 42;
+        fortAcademy.recruitment.remaining = 78;
+        const UnitSnapshot fort{UnitKind::GulyayGorod, "Заслон", 850, 1000, 42, 0, 0, 0};
+        fortAcademy.battle.armies[0].units = {fort};
+        fortAcademy.battle.armies[0].totalCost = 42;
+        for (auto& offer : fortAcademy.recruitment.offers) offer.enabled = true;
+        for (auto& choice : fortAcademy.choices) if (choice.value >= 1 && choice.value <= 6)
+            choice.enabled = true;
+        render("32-fort-academy", fortAcademy);
+        if (!getButton(6).enabled || getButton(6).bounds.position.x <= getButton(5).bounds.position.x)
+            throw std::runtime_error("Fortification and healer purchase buttons are not independent");
+        std::rotate(fortAcademy.recruitment.offers.begin(), fortAcademy.recruitment.offers.end() - 1,
+                    fortAcademy.recruitment.offers.end());
+        render("33-fort-first-academy", fortAcademy);
+        if (getButton(6).bounds.position.x >= getButton(1).bounds.position.x)
+            throw std::runtime_error("Fortification button depends on catalog order");
         State drag = s;
         drag.drag = DragState{0, {119.5f, 654}, {440, 654}, true};
         render("19-dragging", drag);
@@ -230,6 +249,40 @@ int main(int argc, char** argv) {
         add("«Тиль» восстанавливает здоровье «Брон» — восстановлено здоровья: 8.", 1);
         render("08-battle", s);
         const auto battleState = s;
+        State fortBattle = s;
+        fortBattle.battle.armies[0].units = {fort, s.battle.armies[0].units[1]};
+        fortBattle.battle.armies[1].units = {fort, s.battle.armies[1].units[0]};
+        fortBattle.battle.armies[1].units[0].name = "Стена";
+        fortBattle.battle.armies[1].units[0].hp = 214;
+        fortBattle.battle.armies[0].totalCost = 52;
+        fortBattle.battle.armies[1].totalCost = 72;
+        render("34-fort-battle", fortBattle);
+        const auto front = scene.slotCenter({0, 0}, fortBattle);
+        render("35-fort-tooltip", fortBattle, {front.x, 360});
+        State hit = fortBattle;
+        hit.battle.armies[0].units = {s.battle.armies[0].units[1]};
+        hit.battle.armies[1].units[0].hp = 850;
+        presentation::Playback fortHit;
+        const BattleEvent strike{EventType::Melee, 17, 0, names[1], "Стена", 6, 844};
+        hit.effect = fortHit.begin(hit.battle, strike);
+        hit.effect->advance(presentation::duration(strike.type) * .6f);
+        fortHit.commit(hit.battle, *hit.effect);
+        hit.playing = true;
+        hit.waiting = false;
+        render("36-fort-hit", hit);
+        if (hit.battle.armies[1].units[0].hp != 844)
+            throw std::runtime_error("Fortification playback does not use reported durability");
+        State draw = fortBattle;
+        for (auto& army : draw.battle.armies) {
+            army.units.resize(1);
+            army.totalCost = 42;
+        }
+        draw.stage = ViewStage::Result;
+        draw.waiting = false;
+        draw.winner = -2;
+        draw.choices = {{1, "Новая партия"}, {2, "Загрузить"}, {0, "В главное меню"}};
+        render("37-fort-draw-result", draw);
+
         presentation::Playback playback;
         const EventType types[] = {EventType::Melee, EventType::Shot, EventType::Heal,
                                    EventType::Clone, EventType::Buff, EventType::Death};
