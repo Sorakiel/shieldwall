@@ -318,6 +318,29 @@ namespace {
         CHECK(view.frames.back().finished);
     }
 
+    void testArcherMissAfterTargetDeathIsQuiet() {
+        Army a, b;
+        a.add(std::make_unique<HeavyUnit>("Передний", 100, 100, 0, 30));
+        a.add(std::make_unique<Archer>("Без живой цели", 16, 4, 11, 2, 0, 18));
+        b.add(std::make_unique<LightUnit>("Павший", 1, 1, 0, 10));
+        b.add(std::make_unique<LightUnit>("Второй", 100, 1, 0, 10));
+        std::istringstream input; std::ostringstream output;
+        ConsoleUI ui(input, output);
+        ui.showArmies(a, b);
+        output.str(""); output.clear();
+        BattleEngine engine(a, b, 42);
+        const auto events = engine.nextTurn();
+        CHECK(std::any_of(events.begin(), events.end(), [](const BattleEvent& e) {
+            return e.type == EventType::Miss && e.actor == "Без живой цели";
+        }));
+        std::mt19937 phrases(8), expected(8);
+        ui.showEvents(events, phrases);
+        CHECK(!contains(output.str(), "Без живой цели"));
+        CHECK(contains(output.str(), "Павший"));
+        for (const auto& event : events) EventFormatter::format(event, expected, false);
+        CHECK(phrases() == expected());
+    }
+
     void testQuietEventsAndCloneJournal() {
         std::istringstream input;
         std::ostringstream output;
@@ -354,6 +377,7 @@ namespace {
 
 int main() {
     testQuietEventsAndCloneJournal();
+    testArcherMissAfterTargetDeathIsQuiet();
     testFormatter();
     testInput();
     testMenu();

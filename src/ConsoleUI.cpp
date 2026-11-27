@@ -18,7 +18,11 @@ std::optional<std::uint32_t> ConsoleUI::readSetupNumber(const std::string& promp
 }
 
 void ConsoleUI::setStage(ViewStage stage) {
-    if (stage == ViewStage::MainMenu) cloneCounts_ = {};
+    if (stage == ViewStage::MainMenu) {
+        cloneCounts_ = {};
+        eventFrame_ = {};
+        eventPlayback_.reset();
+    }
     view_->setStage(stage);
 }
 void ConsoleUI::clearDisplay() { view_->clearDisplay(); }
@@ -76,6 +80,8 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
     }
     for (int team = 0; team < 2; ++team) cloneCounts_[team] = snapshot.armies[team].clonesCreated;
     snapshot.finished = a.isDefeated() || b.isDefeated();
+    eventFrame_ = snapshot;
+    eventPlayback_.reset();
     // Копии остаются валидными после removeDead() на следующем ходе.
     view_->showArmies(snapshot);
 }
@@ -91,8 +97,11 @@ void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937&
             number = std::max(number, cloneidentity::parse(cloneName).number);
         }
         // Formatting every event preserves the separate journal RNG sequence.
-        view_->battleEvent(event, EventFormatter::format(event, rng, false, cloneName));
+        const auto step = eventPlayback_.begin(eventFrame_, event);
+        eventPlayback_.commit(eventFrame_, step);
+        view_->presentBattleEvent(event, EventFormatter::format(event, rng, false, cloneName), step.visible);
     }
+    view_->finishBattleEvents();
 }
 
 void ConsoleUI::showResult(int winner) {

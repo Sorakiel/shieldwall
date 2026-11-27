@@ -8,6 +8,7 @@
 #include "BattlePlayback.h"
 #include "ArmyUi.h"
 #include "BattleMotion.h"
+#include "NumberInput.h"
 
 namespace sfmlui {
 inline constexpr float Width = 1440.f, Height = 900.f;
@@ -16,6 +17,10 @@ inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 
 inline constexpr int RemoveBase = 1000;
 inline constexpr float FooterButtonWidth = 246.f, FooterGap = 12.f, FooterHeight = 52.f;
 inline constexpr sf::Vector2f RosterCardSize{139.f, 140.f};
+inline constexpr std::size_t RosterUnits = 9;
+inline constexpr float RosterPitch = 149.f;
+inline const sf::FloatRect RosterArea{{50, 578}, {1331, 152}};
+inline const std::array<sf::FloatRect, 2> ArmyAreas{{{{44, 170}, {476, 530}}, {{572, 170}, {476, 530}}}};
 struct RosterCard {
     sf::FloatRect bounds;
     std::size_t index;
@@ -52,22 +57,30 @@ struct State {
     battletext::Log log;
     std::vector<MenuChoice> choices;
     std::vector<std::string> notices;
-    std::array<std::size_t, 2> offsets{};
+    std::array<float, 2> offsets{};
     std::array<std::optional<presentation::Scroll>, 2> scrolls{};
+    std::array<bool, 2> manualScrolls{};
     bool recruiting = false, waiting = false, automatic = false, playing = false, paused = false;
     bool enteringNumber = false, enteringText = false, selectAll = false;
     NumberCancel numberCancel = NumberCancel::MainMenu;
     int handoff = -1, turn = 0, winner = -1, logOffset = 0;
     float speed = 1.f, ambience = 0.f;
     std::string prompt, input, error, result;
+    NumberInput number;
     std::optional<presentation::Step> effect;
     std::optional<DragState> drag;
     std::optional<RosterTransition> rosterTransition;
 };
 inline float displayedOffset(const State& state, int team) {
-    return state.scrolls[team] ? state.scrolls[team]->value() : static_cast<float>(state.offsets[team]);
+    return state.scrolls[team] ? state.scrolls[team]->value() : state.offsets[team];
 }
 inline bool scrolling(const State& state) { return state.scrolls[0] || state.scrolls[1]; }
+inline std::optional<int> hoveredArmy(const State& state, sf::Vector2f point) {
+    if (state.recruiting) return RosterArea.contains(point) ? std::optional<int>(state.recruitment.activeTeam) : std::nullopt;
+    for (int team = 0; team < 2; ++team)
+        if (ArmyAreas[team].contains(point)) return team;
+    return std::nullopt;
+}
 class Scene {
 public:
     explicit Scene(const std::filesystem::path& assetDirectory);
@@ -84,6 +97,7 @@ public:
         return textBounds_;
     }
     bool saves(const State& state) const;
+    bool placeNumberCaret(State& state, sf::Vector2f point, bool extend = false) const;
     sf::Vector2f slotCenter(presentation::Slot slot, const State& state) const;
 
 private:
@@ -94,6 +108,9 @@ private:
     std::vector<RosterCard> rosterCards_;
     std::vector<sf::FloatRect> textBounds_;
     std::optional<sf::FloatRect> clip_;
+    sf::View beginClip(const sf::FloatRect& area);
+    void endClip(const sf::View& previous);
+    void numberField(const State& state, float x, float y, unsigned size);
     void box(float x, float y, float w, float h, sf::Color fill, float radius = 12.f,
              sf::Color stroke = sf::Color::Transparent);
     void line(sf::Vector2f a, sf::Vector2f b, sf::Color color, float thickness = 1.f);

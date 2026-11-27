@@ -213,25 +213,90 @@ void testPlaybackRatesAndScrolling() {
     CHECK(presentation::focusOffset(5, 7, 9, 10, 5) == 5);
     CHECK(presentation::focusOffset(5, 2, 4, 10, 5) == 2);
 }
-void testDragAcrossPageBoundary() {
-    presentation::DragPager pager;
-    CHECK(presentation::dragPageDirection(1317, 650) == 1);
-    CHECK(presentation::dragPageDirection(117, 650) == -1);
-    CHECK(presentation::dragPageDirection(1317, 450) == 0);
-    CHECK(pager.advance(1, .3f, false, true) == 0);
-    CHECK(pager.advance(1, .26f, false, true) == 1);
-    std::vector<ArmyCardSlot> secondPage, firstPage;
-    for (std::size_t i = 0; i < 8; ++i) {
-        firstPage.push_back({i, 119.5f + i * 151});
-        secondPage.push_back({8 + i, 119.5f + i * 151});
+void testContinuousArmyScrolling() {
+    CHECK(presentation::dragScrollDirection(1317, 650) == 1);
+    CHECK(presentation::dragScrollDirection(117, 650) == -1);
+    CHECK(presentation::dragScrollDirection(1317, 450) == 0);
+    CHECK(presentation::wheelOffset(0, -1, 30, 9) == 2);
+    CHECK(presentation::wheelOffset(2, -3, 30, 9) == 8);
+    CHECK(presentation::wheelOffset(8, .5f, 30, 9) == 7);
+    CHECK(presentation::wheelOffset(19, -5, 30, 9) == 21);
+    CHECK(presentation::wheelOffset(3, 5, 30, 9) == 0);
+    CHECK(presentation::wheelOffset(0, -10, 8, 9) == 0);
+    float at = 0;
+    for (int frame = 0; frame < 60; ++frame) at = presentation::edgeScrollOffset(at, 1, 1.f/60, 30, 9);
+    CHECK(std::abs(at - 2) < .001f);
+    CHECK(presentation::edgeScrollOffset(21, 1, .5f, 30, 9) == 21);
+    CHECK(presentation::edgeScrollOffset(0, -1, .5f, 30, 9) == 0);
+    CHECK(presentation::edgeScrollOffset(7.25f, 0, 1, 30, 9) == 7.25f);
+    presentation::Scroll wheel(0, 2, .18f);
+    wheel.advance(.09f);
+    CHECK(wheel.value() > 0 && wheel.value() < 2);
+    presentation::Scroll next(wheel.value(), 4, .18f);
+    CHECK(next.value() == wheel.value());
+    CHECK(next.advance(.18f) && next.value() == 4);
+    std::vector<ArmyCardSlot> right, left;
+    for (std::size_t i = 0; i < 9; ++i) {
+        left.push_back({i, 119.5f + i * 149});
+        right.push_back({8 + i, 119.5f + i * 149});
     }
-    CHECK(armyDropIndex(7, 120.5f, secondPage) == 8); // 8th -> after 9th
-    CHECK(armyDropIndex(8, firstPage.back().center - 1, firstPage) == 7); // 9th -> before 8th
-    pager.reset();
-    CHECK(pager.advance(-1, 1, false, true) == 0);
-    CHECK(pager.advance(1, 1, true, false) == 0);
-    CHECK(pager.advance(-1, .56f, true, false) == -1);
+    CHECK(armyDropIndex(7, 120.5f, right) == 8);
+    CHECK(armyDropIndex(8, 119.5f + 7 * 149 - 1, left) == 7);
 }
+void testWholeFormationCompaction() {
+    BattleSnapshot s;
+    for (int team = 0; team < 2; ++team)
+        for (int i = 0; i < 8; ++i)
+            s.armies[team].units.push_back({UnitKind::Light, "Боец " + std::to_string(i),
+                i == 0 || i == 3 ? 0 : 20, 20, 10});
+    presentation::Playback playback;
+    auto step = playback.begin(s, BattleEvent{EventType::Promote, 1, 0, "Боец 1"});
+    CHECK(step.movesFormation());
+    for (int team = 0; team < 2; ++team) {
+        CHECK(s.armies[team].units.size() == 6 && s.armies[team].totalCost == 60);
+        CHECK(step.previousIndices[team] == std::vector<std::size_t>({1,2,4,5,6,7}));
+        for (std::size_t i = 0; i < 6; ++i)
+            CHECK(presentation::formationIndex(step, team, i) == step.previousIndices[team][i]);
+    }
+    step.advance(presentation::duration(EventType::Promote) * .5f);
+    CHECK(presentation::formationIndex(step, 0, 4) > 4 && presentation::formationIndex(step, 0, 4) < 6);
+    step.advance(100);
+    CHECK(presentation::formationIndex(step, 0, 4) == 4);
+    CHECK(!playback.begin(s, BattleEvent{EventType::Promote, 1, 1, "Боец 1"}).movesFormation());
+    // Deaths behind a surviving front have no core Promote event.
+    s = frame();
+    s.armies[0].units[2].hp = 0;
+    auto cleanup = presentation::Playback::cleanup(s, 1);
+    CHECK(cleanup.movesFormation() && s.armies[0].units.size() == 4);
+    CHECK(cleanup.previousIndices[0] == std::vector<std::size_t>({0,1,3,4}));
+    CHECK(presentation::formationIndex(cleanup, 0, 3) == 4);
+    // A temporarily unknown clone is not a corpse just because HP isn't known.
+    s.armies[0].units[1].detailsKnown = false;
+    s.armies[0].units[1].hp = 0;
+    CHECK(!presentation::Playback::cleanup(s).movesFormation() && s.armies[0].units.size() == 4);
+    const auto death = playback.begin(s, BattleEvent{EventType::Death, 2, 0, "Мирн"});
+    playback.commit(s, death);
+    CHECK(presentation::Playback::cleanup(s).movesFormation() && s.armies[0].units.size() == 3);
+}
+void testArcherWithoutLivingTarget() {
+    BattleSnapshot s;
+    s.armies[0].units = {{UnitKind::Archer, "Дарр", 0, 16, 18},
+                         {UnitKind::Archer, "Дарр", 16, 16, 18},
+                         {UnitKind::Archer, "Дарр", 16, 16, 18}};
+    s.armies[1].units = {{UnitKind::Light, "Мирн", 0, 20, 10},
+                         {UnitKind::Light, "Брон", 20, 20, 10}};
+    presentation::Playback playback;
+    const BattleEvent miss{EventType::Miss, 1, 0, "Дарр"};
+    auto melee = playback.begin(s, miss);
+    CHECK(melee.actor.index == 0 && melee.visible);
+    const auto blocked = playback.begin(s, miss);
+    CHECK(blocked.actor.index == 1 && !blocked.visible);
+    const auto shot = playback.begin(s, BattleEvent{EventType::Shot, 1, 0, "Дарр", "Брон", 2, 18});
+    CHECK(shot.actor.index == 2 && shot.visible);
+    const auto unknown = playback.begin(s, BattleEvent{EventType::Miss, 1, 0, "Неизвестная копия"});
+    CHECK(!unknown.visible);
+}
+
 void testExactAndAmbiguousCloneSources() {
     struct DetailedClone : BattleEvent {
         int sourceIndex = -1;
@@ -303,7 +368,9 @@ void testQuietCastKeepsCasterOrder() {
 } // namespace
 int main() {
     testPlaybackRatesAndScrolling();
-    testDragAcrossPageBoundary();
+    testContinuousArmyScrolling();
+    testWholeFormationCompaction();
+    testArcherWithoutLivingTarget();
     testExactAndAmbiguousCloneSources();
     testQuietCastKeepsCasterOrder();
     testTimingAndJournal();
