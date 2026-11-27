@@ -1,6 +1,7 @@
 #include "SfmlScene.h"
 #include "EquipmentGlyphs.h"
 #include "UnitPresentation.h"
+#include "CloneIdentity.h"
 #include <cmath>
 #include <stdexcept>
 namespace sfmlui {
@@ -146,8 +147,11 @@ void Scene::text(const sf::String& value, float x, float y, unsigned size, sf::C
         target_->draw(t);
         if (!run.isEmpty()) {
             auto bounds = t.getGlobalBounds();
-            if (bounds.size.x > 0 && bounds.size.y > 0)
-                textBounds_.push_back(bounds);
+            if (bounds.size.x > 0 && bounds.size.y > 0) {
+                if (clip_) {
+                    if (const auto visible = bounds.findIntersection(*clip_)) textBounds_.push_back(*visible);
+                } else textBounds_.push_back(bounds);
+            }
         }
         x += textWidth(run, size, display);
         run.clear();
@@ -236,6 +240,25 @@ void Scene::button(const std::string& v, float x, float y, float w, int action, 
     if (hover)
         line({x + 14, y + h - 2}, {x + w - 14, y + h - 2}, ink);
     buttons_.push_back({bounds, action, enabled});
+}
+void Scene::callout(const std::string& value, sf::Vector2f center, sf::Color color, float opacity,
+                    unsigned size, char32_t glyph) {
+    if (value.empty() || opacity <= 0) return;
+    sf::Text caption(body_, fit(value, 280, size), size);
+    caption.setStyle(sf::Text::Bold);
+    caption.setOutlineThickness(1.f);
+    caption.setOutlineColor(alpha(sf::Color::Black, opacity));
+    const auto bounds = caption.getLocalBounds();
+    const float icon = glyph ? 34.f : 0.f, w = bounds.size.x + 28 + icon, h = size + 20.f;
+    const float x = std::clamp(center.x - w / 2, 42.f, 1044.f - w);
+    const float y = std::clamp(center.y - h / 2, 244.f, 676.f - h);
+    box(x, y + 4, w, h, alpha(sf::Color::Black, opacity * .6f), 9);
+    box(x, y, w, h, alpha(ink, opacity * .98f), 9, alpha(color, opacity));
+    if (glyph) drawEquipmentGlyph(*target_, glyph, x + 10, y + (h - 28) / 2, 28, alpha(color, opacity));
+    caption.setFillColor(alpha(paper, opacity));
+    caption.setPosition({x + 14 + icon - bounds.position.x, y + (h - bounds.size.y) / 2 - bounds.position.y});
+    target_->draw(caption);
+    textBounds_.push_back(caption.getGlobalBounds());
 }
 void Scene::crest(float x, float y, float z, sf::Color c) {
     polygon({{x, y},
@@ -561,9 +584,12 @@ void Scene::recruitment(const State& s) {
         box(x, y, 139, 140, ghost ? raised : panel, 11, ghost ? gold : border);
         label(std::to_string(index + 1), x + 12, y + 10, 11, color);
         warrior(unit.kind, x + 103, y + 38, 36, typeColor(unit.kind));
-        const auto name = battletext::unitLabel(unit.name);
+        const auto identity = cloneidentity::parse(unit.name);
+        const auto name = battletext::unitLabel(identity.base);
         text(fit(name.first, 111, 14), x + 12, y + 75, 14, paper);
-        if (name.second.empty())
+        if (identity.number > 0)
+            text(fit("Клон " + std::to_string(identity.number), 111, 11), x + 12, y + 105, 11, violet);
+        else if (name.second.empty())
             label(unitKindName(unit.kind), x + 12, y + 105, 11, muted);
         else
             text(u8(name.second), x + 12, y + 105, 13, gold);
@@ -622,8 +648,19 @@ void Scene::recruitment(const State& s) {
         const auto position = dragPosition(d);
         card(a.units[d.from], d.from, position.x, position.y, true);
     }
-    label("Перетаскивайте бойцов, чтобы изменить порядок. × — удалить бойца. Колесо мыши — прокрутить состав.", 50,
-          739, 12, muted);
+    if (s.drag && s.drag->active) {
+        label("Удерживайте карточку у края, чтобы перейти на другую страницу. Колесо мыши тоже работает.",
+              50, 739, 12, gold);
+        const auto center = dragPosition(*s.drag) + RosterCardSize / 2.f;
+        const int direction = presentation::dragPageDirection(center.x, center.y);
+        if ((direction < 0 && offset > 0) || (direction > 0 && offset + 8 < a.units.size())) {
+            const float x = direction < 0 ? 44.f : 1252.f;
+            const float brightness = .6f + .4f * std::sin(s.ambience * 6);
+            line({x, 584}, {x, 724}, alpha(gold, brightness), 4);
+        }
+    } else
+        label("Перетаскивайте бойцов, чтобы изменить порядок. × — удалить бойца. Колесо мыши — прокрутить состав.",
+              50, 739, 12, muted);
     notice(s, 825, 724, 565);
 }
 std::optional<std::size_t> Scene::dropTarget(const DragState& drag) const {
@@ -638,8 +675,7 @@ std::optional<std::size_t> Scene::dropTarget(const DragState& drag) const {
 sf::Vector2f Scene::slotCenter(presentation::Slot slot, const State& s) const {
     if (!slot.valid())
         return {550, 405};
-    const int relative =
-        std::clamp(slot.index - static_cast<int>(s.offsets[slot.team]), 0, static_cast<int>(PageUnits) - 1);
+    const float relative = static_cast<float>(slot.index) - displayedOffset(s, slot.team);
     return {slot.team == 0 ? 470.f - relative * 95.f : 618.f + relative * 95.f, 399.f};
 }
 void Scene::army(const State& s, int team) {
@@ -649,21 +685,42 @@ void Scene::army(const State& s, int team) {
     box(left, 170, 438, 66, alpha(color, .06f), 10, alpha(color, .23f));
     crest(left + 15, 187, 24, color);
     label(a.name.empty() ? (team == 0 ? "Синие" : "Красные") : a.name, left + 54, 178, 29, color, true);
-    label(unitCount(a.units.size()) + " · " + moneyCount(static_cast<std::size_t>(a.totalCost)), left + 55,
-          215, 11, muted);
+    const bool knownCost = std::all_of(a.units.begin(), a.units.end(),
+                                       [](const UnitSnapshot& unit) { return unit.detailsKnown; });
+    label(unitCount(a.units.size()) + " · " + (knownCost ? moneyCount(static_cast<std::size_t>(a.totalCost))
+                                                        : "стоимость —"), left + 55, 215, 11, muted);
     const auto offset = s.offsets[team];
     if (a.units.empty())
         label("Нет живых бойцов", left + 120, 418, 30, muted, true);
-    for (auto i = offset; i < std::min(a.units.size(), offset + PageUnits); ++i) {
+    const bool shifting = s.effect && s.effect->event.type == EventType::Clone &&
+                          s.effect->actor.team == team && s.effect->progress() >= .2f &&
+                          s.effect->progress() < .72f;
+    const bool moving = s.scrolls[team].has_value() || shifting;
+    const auto savedView = target_->getView();
+    if (moving) {
+        const sf::FloatRect region({team == 0 ? 44.f : 572.f, 272.f}, {476.f, 294.f});
+        const auto size = savedView.getSize(), origin = savedView.getCenter() - size / 2.f;
+        const auto viewport = savedView.getViewport();
+        sf::View clipped(region);
+        clipped.setViewport({{viewport.position.x + (region.position.x - origin.x) / size.x * viewport.size.x,
+                              viewport.position.y + (region.position.y - origin.y) / size.y * viewport.size.y},
+                             {region.size.x / size.x * viewport.size.x,
+                              region.size.y / size.y * viewport.size.y}});
+        target_->setView(clipped);
+        clip_ = region;
+    }
+    const auto display = displayedOffset(s, team);
+    const auto first = moving ? static_cast<std::size_t>(std::max(0.f, std::floor(display) - 1)) : offset;
+    const auto last = moving ? static_cast<std::size_t>(std::ceil(display)) + PageUnits + 1 : offset + PageUnits;
+    for (auto i = first; i < std::min(a.units.size(), last); ++i) {
         const auto& u = a.units[i];
         const auto center = slotCenter({team, static_cast<int>(i)}, s);
-        float dx = 0, opacity = u.hp > 0 ? 1.f : .2f;
+        float dx = 0, opacity = !u.detailsKnown || u.hp > 0 ? 1.f : .2f;
         bool actor = false, target = false;
         if (s.effect) {
-            const auto actorIndex = s.effect->actor.index +
-                                    (s.effect->committed && s.effect->event.type == EventType::Clone ? 1 : 0);
-            actor = s.effect->actor.team == team && actorIndex == static_cast<int>(i);
-            target = s.effect->target.team == team && s.effect->target.index == static_cast<int>(i);
+            const auto acting = presentation::actorSlot(*s.effect), affected = presentation::targetSlot(*s.effect);
+            actor = acting.team == team && acting.index == static_cast<int>(i);
+            target = affected.team == team && affected.index == static_cast<int>(i);
             const float p = s.effect->progress();
             if (actor && s.effect->event.type == EventType::Melee)
                 dx = (team == 0 ? 1.f : -1.f) * std::sin(p * Pi) * 36;
@@ -678,37 +735,63 @@ void Scene::army(const State& s, int team) {
                 dx += (from.x - center.x) * (1 - p) * (1 - p);
             }
         }
+        if (shifting && static_cast<int>(i) >= s.effect->actor.index) {
+            if (!s.effect->committed)
+                dx += (team == 0 ? -95.f : 95.f) * presentation::smooth((s.effect->progress() - .2f) / .3f);
+            else if (static_cast<int>(i) == s.effect->actor.index)
+                opacity *= .75f + .25f * presentation::smooth((s.effect->progress() - .5f) / .2f);
+        }
         const float x = center.x - 42 + dx;
-        box(x, 297, 84, 264, actor ? sf::Color(44, 51, 51) : panel, 12,
-            (actor || target) ? alpha(color, .8f) : alpha(border, .75f));
+        const auto accent = s.effect && (s.effect->event.type == EventType::Clone) ? violet
+                          : s.effect && s.effect->event.type == EventType::Heal ? green
+                          : s.effect && s.effect->event.type == EventType::Buff ? gold : color;
+        box(x, 297, 84, 264, target ? sf::Color(39, 49, 51) : actor ? sf::Color(44, 51, 51) : panel, 12,
+            (actor || target) ? accent : alpha(border, .75f));
+        if (target || actor) {
+            line({x + 8, 307}, {x + 76, 307}, accent, 3);
+            line({x + 8, 553}, {x + 76, 553}, accent, 3);
+        }
         box(x + 8, 315, 68, 3, typeColor(u.kind), 1);
-        text(fit(unitKindName(u.kind), 68, unitui::fortified(u.kind) ? 9 : 10), x + 8, 331,
+        text(fit(u.detailsKnown ? unitKindName(u.kind) : "Клон", 68, unitui::fortified(u.kind) ? 9 : 10), x + 8, 331,
              unitui::fortified(u.kind) ? 9 : 10, typeColor(u.kind));
         disc(x + 42, 288, 11, i == 0 ? color : raised);
         label(std::to_string(i + 1), x + 38, 280, 10, i == 0 ? ink : muted);
-        warrior(u.kind, x + 42, 351, 58, typeColor(u.kind), team == 1, opacity);
-        const auto name = battletext::unitLabel(u.name);
+        if (u.detailsKnown) warrior(u.kind, x + 42, 351, 58, typeColor(u.kind), team == 1, opacity);
+        else {
+            box(x + 21, 359, 34, 43, raised, 5, violet);
+            box(x + 29, 368, 34, 43, panel, 5, violet);
+            label("?", x + 39, 374, 23, violet);
+        }
+        const auto identity = cloneidentity::parse(u.name);
+        const auto name = battletext::unitLabel(identity.base);
         text(fit(name.first, 70, 13), x + 7, 421, 13, paper);
         auto badges = u8(name.second);
         unsigned badgeSize = 13;
         while (badgeSize > 1 && textWidth(badges, badgeSize) > 70)
             --badgeSize;
-        text(badges, x + 7, 442, badgeSize, gold);
+        if (identity.number > 0) {
+            const auto mark = "Клон " + std::to_string(identity.number);
+            unsigned size = 10;
+            while (size > 4 && textWidth(u8(mark), size) > 68) --size;
+            box(x + 7, 441, 70, 16, ink, 4, alpha(violet, .7f));
+            label(mark, x + 9, 442, size, violet);
+        } else text(badges, x + 7, 442, badgeSize, gold);
         const auto statColor =
             target && s.effect && s.effect->event.type == EventType::Buff && s.effect->committed ? gold
                                                                                                  : paper;
-        text(fit("Атака " + unitui::attackValue(u.kind, u.attack), 68, 11), x + 8, 462, 11, statColor);
-        text(fit(std::string(unitui::defenseName(u.kind)) + " " + unitui::defenseValue(u.kind, u.defense), 68, 11), x + 8, 480, 11, statColor);
+        text(fit("Атака " + (u.detailsKnown ? unitui::attackValue(u.kind, u.attack) : "—"), 68, 11), x + 8, 462, 11, statColor);
+        text(fit(std::string(unitui::defenseName(u.kind)) + " " + (u.detailsKnown ? unitui::defenseValue(u.kind, u.defense) : "—"), 68, 11), x + 8, 480, 11, statColor);
         if (u.kind == UnitKind::Archer)
             text(fit("Выстрел " + std::to_string(u.rangedAttack), 68, 10), x + 8, 500, 10, typeColor(u.kind));
         else if (unitui::fortified(u.kind))
             label("Прочность", x + 8, 500, 10, muted);
-        label(std::to_string(std::max(0, u.hp)) + " / " + std::to_string(u.maxHp), x + 8, 522, 10, muted);
+        label(u.detailsKnown ? std::to_string(std::max(0, u.hp)) + " / " + std::to_string(u.maxHp) : "?",
+              x + 8, 522, 10, muted);
         box(x + 8, 542, 68, 5, ink, 2);
         const float ratio = u.maxHp > 0 ? std::clamp(static_cast<float>(u.hp) / u.maxHp, 0.f, 1.f) : 0;
         if (ratio > 0)
             box(x + 8, 542, 68 * ratio, 5, ratio > .3f ? color : red, 2);
-        if (sf::FloatRect({x, 297}, {84, 264}).contains(mouse_) && !s.playing) {
+        if (sf::FloatRect({x, 297}, {84, 264}).contains(mouse_) && !s.playing && !moving && u.detailsKnown) {
             const float tx = std::clamp(x - 40, 48.f, 760.f);
             box(tx, 573, 312, 79, raised, 9, gold);
             text(fit(battletext::icons(u.name), 250, 14), tx + 12, 586, 14, paper);
@@ -721,6 +804,7 @@ void Scene::army(const State& s, int team) {
                  tx + 12, 628, 12, paper);
         }
     }
+    if (moving) { target_->setView(savedView); clip_.reset(); }
     button("<", left, 660, 36, 200 + team * 2, offset > 0 && !s.playing, false, 32);
     button(">", left + 46, 660, 36, 201 + team * 2, offset + PageUnits < a.units.size() && !s.playing, false,
            32);
@@ -748,9 +832,9 @@ void Scene::field(const State& s) {
                               : gold,
               true);
     } else
-        label(s.stage == ViewStage::Battle ? "ПЕРВЫЕ БОЙЦЫ" : "АРМИИ ГОТОВЫ К БОЮ",
+        label(s.stage == ViewStage::Battle ? "БОЕВОЙ СТРОЙ" : "АРМИИ ГОТОВЫ К БОЮ",
               s.stage == ViewStage::Battle ? 469.f : 370.f, 251, 10, gold);
-    if (s.effect)
+    if (s.effect && !scrolling(s))
         effects(s);
     journal(s);
     if (s.waiting || s.playing) {
@@ -762,10 +846,32 @@ void Scene::field(const State& s) {
         button("Сохранить", 32 + 2 * step, 778, FooterButtonWidth, Save, true, false, FooterHeight);
         button("В главное меню", 32 + 3 * step, 778, FooterButtonWidth, 0, true, false, FooterHeight);
         label("Enter / пробел — следующий ход     A — автобой     S — сохранить", 34, 851, 11, muted);
-        button(s.speed == .5f   ? "Скорость ×0.5"
-               : s.speed == 1.f ? "Скорость ×1"
-                                : "Скорость ×2",
-               786, 105, 143, Speed, true, false, 28);
+        label("Скорость", 575, 109, 12, muted);
+        const int speedActions[] = {SpeedHalf, Speed, Speed2, Speed4};
+        const std::string speedNames[] = {"0.5×", "1×", "2×", "4×"};
+        for (std::size_t i = 0; i < presentation::Speeds.size(); ++i) {
+            const float x = 650.f + i * 68.f;
+            const bool selected = s.speed == presentation::Speeds[i];
+            if (selected) {
+                box(x - 4, 101, 70, 36, alpha(gold, .12f), 12);
+                box(x - 2, 103, 66, 32, alpha(gold, .25f), 10);
+            }
+            button(speedNames[i], x, 105, 62, speedActions[i], true, false, 28);
+            if (selected) {
+                box(x, 105, 62, 28, sf::Color(35, 43, 46), 8, gold);
+                box(x + 3, 108, 56, 22, sf::Color(42, 48, 46), 5, alpha(gold, .25f));
+                sf::Text caption(body_, u8(speedNames[i]), 15);
+                caption.setStyle(sf::Text::Bold);
+                const auto bounds = caption.getLocalBounds();
+                caption.setPosition({x + (56 - bounds.size.x) / 2 - bounds.position.x,
+                                     105 + (28 - bounds.size.y) / 2 - bounds.position.y});
+                caption.setFillColor(paper);
+                target_->draw(caption);
+                textBounds_.push_back(caption.getGlobalBounds());
+                line({x + 49, 118}, {x + 52, 121}, gold, 1.8f);
+                line({x + 52, 121}, {x + 58, 113}, gold, 1.8f);
+            }
+        }
         if (s.playing)
             button(s.paused ? "Продолжить" : "Пауза", 941, 105, 111, Pause, true, false, 28);
     } else
@@ -785,7 +891,7 @@ void Scene::journal(const State& s) {
     }
     if (s.log.lines.empty()) {
         crest(1195, 366, 73, alpha(gold, .18f));
-        paragraph("Сражение ещё не началось.\nЗдесь появятся события боя.", 1114, 492, 250, 14, muted);
+        paragraph("Здесь появятся события боя.", 1114, 492, 250, 14, muted);
     }
     if (static_cast<int>(s.log.lines.size()) > LogLines) {
         const float total = static_cast<float>(s.log.lines.size()),
@@ -800,12 +906,29 @@ void Scene::effects(const State& s) {
     const auto& step = *s.effect;
     const auto& e = step.event;
     const float p = step.progress(), pulse = std::sin(p * Pi);
-    const auto a = slotCenter(step.actor, s), b = slotCenter(step.target, s);
-    const auto color = e.type == EventType::Heal                                        ? green
-                       : e.type == EventType::Clone || e.type == EventType::CloneFailed ? violet
-                       : e.type == EventType::Buff                                      ? gold
-                       : e.team == 0                                                    ? blue
-                                                                                        : red;
+    const auto position = [&](presentation::Slot slot) {
+        auto value = slotCenter(slot, s);
+        if (e.type == EventType::Clone && !step.committed && slot.valid() &&
+            slot.team == step.actor.team && slot.index >= step.actor.index)
+            value.x += (slot.team == 0 ? -95.f : 95.f) * presentation::smooth((p - .2f) / .3f);
+        return value;
+    };
+    const auto a = position(presentation::actorSlot(step)), b = position(presentation::targetSlot(step));
+    const auto created = slotCenter(step.actor, s);
+    const bool sourceVisible = step.target.valid() &&
+        step.target.index >= static_cast<int>(s.offsets[step.target.team]) &&
+        step.target.index < static_cast<int>(s.offsets[step.target.team] + PageUnits);
+    const auto color = e.type == EventType::Heal ? green : e.type == EventType::Clone ? violet
+                     : e.type == EventType::Buff ? gold : e.team == 0 ? blue : red;
+    const auto arc = [](sf::Vector2f from, sf::Vector2f to, float t, float height) {
+        return from + (to - from) * t + sf::Vector2f(0, -std::sin(t * Pi) * height);
+    };
+    const auto cross = [&](sf::Vector2f at, float size, float opacity) {
+        line(at - sf::Vector2f(size, 0), at + sf::Vector2f(size, 0), alpha(ink, opacity), 9);
+        line(at - sf::Vector2f(0, size), at + sf::Vector2f(0, size), alpha(ink, opacity), 9);
+        line(at - sf::Vector2f(size, 0), at + sf::Vector2f(size, 0), alpha(green, opacity), 5);
+        line(at - sf::Vector2f(0, size), at + sf::Vector2f(0, size), alpha(green, opacity), 5);
+    };
     if (e.type == EventType::Shot) {
         const float t = std::clamp((p - .10f) / .40f, 0.f, 1.f);
         const sf::Vector2f pos = a + (b - a) * t + sf::Vector2f(0, -std::sin(t * Pi) * 86);
@@ -834,57 +957,106 @@ void Scene::effects(const State& s) {
                  alpha(gold, fade), 2);
         }
     }
-    const auto center = e.type == EventType::Death || e.type == EventType::Promote ? a : b;
-    if (e.type == EventType::Heal || e.type == EventType::Clone || e.type == EventType::CloneFailed ||
-        e.type == EventType::Buff) {
-        sf::CircleShape ring(31 + 25 * p, 56);
-        ring.setOrigin({31 + 25 * p, 31 + 25 * p});
-        ring.setPosition(center);
-        ring.setFillColor(sf::Color::Transparent);
-        ring.setOutlineThickness(2);
-        ring.setOutlineColor(alpha(color, pulse));
-        target_->draw(ring);
-        for (int i = 0; i < 8; ++i) {
-            const float theta = i * Pi / 4 + p * 1.4f;
-            const auto pos = center + sf::Vector2f(std::cos(theta), std::sin(theta)) * (28 + 24 * p);
-            disc(pos.x, pos.y, 2.6f, alpha(color, pulse));
+    if (e.type == EventType::Heal) {
+        for (int i = 0; i < 3; ++i) {
+            const auto t = std::clamp((p - .08f - i * .045f) / .36f, 0.f, 1.f);
+            if (t > 0 && t < 1) {
+                const auto at = arc(a, b, t, 70.f + i * 12.f);
+                cross(at, 7.f + i * 2.f, .95f);
+                line(at - sf::Vector2f((b.x - a.x) * .08f, 6), at, alpha(green, .45f), 3);
+            }
         }
-        if (e.type == EventType::Heal) {
-            line(center + sf::Vector2f(-15, -12), center + sf::Vector2f(15, -12), alpha(green, pulse), 5);
-            line(center + sf::Vector2f(0, -27), center + sf::Vector2f(0, 3), alpha(green, pulse), 5);
+        if (p >= .45f) {
+            cross(b - sf::Vector2f(0, 12), 17 + 6 * pulse, .95f);
+            for (int i = 0; i < 3; ++i)
+                cross(b + sf::Vector2f(-24.f + i * 24.f, 25 - (p - .45f) * 85), 5, .8f);
         }
-        if (e.type == EventType::Clone && p < .65f) {
-            const auto own = slotCenter(step.actor, s);
-            warrior(step.subjectKind, own.x + (e.team == 0 ? 48 : -48), 347, 65, violet, e.team == 1,
-                    pulse * .6f);
-            line(a, b, alpha(violet, pulse * .3f), 2);
+    }
+    char32_t equipment = 0;
+    std::string equipmentName = e.buff;
+    if (e.type == EventType::Buff) {
+        for (const auto& item : battletext::equipment)
+            if (item.first == e.buff) equipment = u8(item.second)[0];
+        if (e.buff == "шлем") equipmentName = "Шлем";
+        else if (e.buff == "щит") equipmentName = "Щит";
+        else if (e.buff == "копьё") equipmentName = "Копьё";
+        else if (e.buff == "конь") equipmentName = "Конь";
+        const auto t = std::clamp((p - .08f) / .42f, 0.f, 1.f);
+        const auto item = arc(a, b, t, 88);
+        if (p < .5f) {
+            line(a, item, alpha(gold, .4f), 3);
+            box(item.x - 24, item.y - 24, 48, 48, ink, 9, gold);
+            if (equipment) drawEquipmentGlyph(*target_, equipment, item.x - 19, item.y - 19, 38, gold);
+        } else {
+            if (equipment) drawEquipmentGlyph(*target_, equipment, b.x - 27, b.y - 36, 54, gold);
+            for (int i = 0; i < 5; ++i) {
+                const auto at = b + sf::Vector2f(-30.f + 15.f * i, -48 - (p - .5f) * 40);
+                polygon({at + sf::Vector2f(0, -5), at + sf::Vector2f(3, 0),
+                         at + sf::Vector2f(0, 5), at + sf::Vector2f(-3, 0)}, alpha(gold, .8f));
+            }
         }
-        if (e.type == EventType::Buff) {
-            char32_t glyph = U'🛡';
-            for (const auto& item : battletext::equipment)
-                if (item.first == e.buff)
-                    glyph = u8(item.second)[0];
-            drawEquipmentGlyph(*target_, glyph, center.x - 16, center.y - 26, 32, alpha(gold, pulse));
+    }
+    if (e.type == EventType::Clone) {
+        if (p < .5f) {
+            box(a.x - 17, a.y - 25, 25, 34, ink, 4, violet);
+            box(a.x - 6, a.y - 15, 25, 34, raised, 4, violet);
+            if (sourceVisible) {
+                line(a, b, alpha(violet, .8f), 3);
+                callout("Оригинал", b - sf::Vector2f(0, 126), violet, 1, 14);
+            }
+            const float t = presentation::smooth((p - .20f) / .30f);
+            if (p >= .20f) {
+                const auto ghost = arc(sourceVisible ? b : a, created, t, 80);
+                box(ghost.x - 35, ghost.y - 48, 70, 86, alpha(ink, .8f), 9, violet);
+                if (step.clone && step.clone->detailsKnown)
+                    warrior(step.clone->kind, ghost.x, ghost.y - 42, 65, typeColor(step.clone->kind),
+                            e.team == 1, .85f);
+                else {
+                    box(ghost.x - 18, ghost.y - 31, 30, 39, raised, 4, violet);
+                    box(ghost.x - 7, ghost.y - 20, 30, 39, panel, 4, violet);
+                }
+                line(sourceVisible ? b : a, ghost, alpha(violet, .5f), 2);
+            }
+        } else {
+            // A new card occupies the space opened directly before the caster.
+            line(created + sf::Vector2f(-37, -98), created + sf::Vector2f(37, -98), violet, 4);
+            line(created + sf::Vector2f(-37, 153), created + sf::Vector2f(37, 153), violet, 4);
+        }
+    }
+    if (e.type == EventType::Death && p >= .25f) {
+        line(a + sf::Vector2f(-22, -26), a + sf::Vector2f(22, 18), alpha(red, pulse), 5);
+        line(a + sf::Vector2f(22, -26), a + sf::Vector2f(-22, 18), alpha(red, pulse), 5);
+    }
+    if (e.type == EventType::Promote) {
+        for (int i = 0; i < 3; ++i) {
+            const float direction = e.team == 0 ? 1.f : -1.f;
+            const auto at = a + sf::Vector2f(-direction * (45.f + i * 18.f), 208);
+            line(at + sf::Vector2f(-direction * 6, -7), at, alpha(gold, pulse), 3);
+            line(at, at + sf::Vector2f(-direction * 6, 7), alpha(gold, pulse), 3);
         }
     }
     if (p >= .5f) {
-        std::string floating;
+        const float opacity = p < .94f ? 1.f : (1 - p) / .06f;
+        const auto center = b - sf::Vector2f(0, 119 + (p - .5f) * 40);
         if (e.type == EventType::Melee || e.type == EventType::Shot)
-            floating = "−" + std::to_string(e.damage);
-        if (e.type == EventType::Heal)
-            floating = "+" + std::to_string(e.restored);
-        if (e.type == EventType::Clone)
-            floating = "+1";
-        if (e.type == EventType::Buff)
-            floating = "Бонус";
-        if (!floating.empty())
-            label(floating, center.x - 16, center.y - 100 - (p - .5f) * 50, 27, alpha(color, (1 - p) * 2),
-                  true);
+            callout("−" + std::to_string(e.damage), center, red, opacity, 25);
+        else if (e.type == EventType::Heal)
+            callout("+" + std::to_string(e.restored), center, green, opacity, 25);
+        else if (e.type == EventType::Buff)
+            callout(equipmentName, center, gold, opacity, 21, equipment);
+        else if (e.type == EventType::Clone && step.clone) {
+            const auto number = cloneidentity::parse(step.clone->name).number;
+            callout(number ? "Клон " + std::to_string(number) : "Копия",
+                    created - sf::Vector2f(0, 123), violet, opacity, 19);
+        }
     }
-    box(262, 703, 560, 23, ink, 8, alpha(color, .25f));
-    const auto caption = actionName(e.type) + (s.paused ? " · пауза" : "");
+    box(262, 703, 560, 23, ink, 8, alpha(color, .55f));
+    std::string caption = actionName(e.type);
+    if (e.type == EventType::Clone && step.clone) caption += ": " + step.clone->name;
+    if (e.type == EventType::Buff && !equipmentName.empty()) caption += ": " + equipmentName;
+    if (s.paused) caption += " · пауза";
     const auto value = fit(caption, 536, 12);
-    text(value, 542 - textWidth(value, 12) / 2, 705, 12, color);
+    text(value, 542 - textWidth(value, 12) / 2, 705, 12, paper);
 }
 void Scene::archive(const State& s) {
     const bool deleting = std::any_of(s.choices.begin(), s.choices.end(),
@@ -969,6 +1141,7 @@ void Scene::draw(sf::RenderTarget& target, const State& s, sf::Vector2f mouse) {
     buttons_.clear();
     rosterCards_.clear();
     textBounds_.clear();
+    clip_.reset();
     background(s);
     if (s.handoff >= 0) {
         header();

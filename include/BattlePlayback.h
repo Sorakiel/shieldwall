@@ -5,6 +5,8 @@
 #include "Event.h"
 #include "View.h"
 #include "UnitDecorator.h"
+#include "CloneIdentity.h"
+#include "CloneEventData.h"
 
 namespace presentation {
 struct Slot {
@@ -47,6 +49,7 @@ struct Step {
     Slot actor, target;
     UnitKind subjectKind = UnitKind::Light;
     int fromIndex = -1;
+    std::optional<UnitSnapshot> clone;
     float elapsed = 0.f;
     bool committed = false;
     float progress() const {
@@ -67,6 +70,18 @@ struct Step {
         return false;
     }
 };
+
+inline Slot actorSlot(const Step& step) {
+    auto slot = step.actor;
+    if (step.event.type == EventType::Clone && step.committed && slot.valid()) ++slot.index;
+    return slot;
+}
+inline Slot targetSlot(const Step& step) {
+    auto slot = step.target;
+    if (step.event.type == EventType::Clone && step.committed && slot.valid() &&
+        slot.index >= step.actor.index) ++slot.index;
+    return slot;
+}
 
 // Reuse the decorators' actual bonuses rather than copying combat numbers into the view.
 inline void applyEquipment(UnitSnapshot& unit, const std::string& equipment) {
@@ -95,10 +110,10 @@ class Playback {
     std::array<Slot, 2> lastHit_{};
     std::array<std::size_t, 2> shooters_{{1, 1}}, casters_{{1, 1}};
     static int find(const ArmySnapshot& army, const std::string& name, std::size_t start = 0,
-                    int preferredHp = -1) {
+                    int preferredHp = -1, std::optional<UnitKind> kind = {}) {
         int fallback = -1;
         for (auto i = start; i < army.units.size(); ++i) {
-            if (army.units[i].name != name)
+            if (army.units[i].name != name || (kind && army.units[i].kind != *kind))
                 continue;
             if (fallback < 0)
                 fallback = static_cast<int>(i);
@@ -115,7 +130,7 @@ public:
         shooters_ = {{1, 1}};
         casters_ = {{1, 1}};
     }
-    Step begin(BattleSnapshot& frame, const BattleEvent& event) {
+    template<class Event> Step begin(BattleSnapshot& frame, const Event& event) {
         if (turn_ != event.turn) {
             reset();
             turn_ = event.turn;
@@ -137,7 +152,11 @@ public:
         const bool cast = event.type == EventType::Heal || event.type == EventType::Clone ||
                           event.type == EventType::CloneFailed;
         const auto start = shot ? shooters_[team] : cast ? casters_[team] : 0;
-        int actor = find(frame.armies[team], event.actor, start, event.type == EventType::Death ? 0 : -1);
+        const auto actingKind = shot ? std::optional<UnitKind>(UnitKind::Archer)
+                              : event.type == EventType::Heal ? std::optional<UnitKind>(UnitKind::Healer)
+                              : cast ? std::optional<UnitKind>(UnitKind::Mage) : std::nullopt;
+        int actor = find(frame.armies[team], event.actor, start,
+                         event.type == EventType::Death ? 0 : -1, actingKind);
         if (event.type == EventType::Death && lastHit_[team].valid()) {
             const auto i = static_cast<std::size_t>(lastHit_[team].index);
             if (i < frame.armies[team].units.size() && frame.armies[team].units[i].name == event.actor)
@@ -154,6 +173,33 @@ public:
         // distinguish same-name targets; the authoritative next frame always wins.
         step.target = {targetTeam, find(frame.armies[targetTeam], event.target, 0,
                                         enemy ? event.hpLeft + event.damage : -1)};
+        if (event.type == EventType::Clone) {
+            const auto data = cloneData(event);
+            const auto& own = frame.armies[team];
+            if (data.sourceIndex >= 0 && static_cast<std::size_t>(data.sourceIndex) < own.units.size() &&
+                (!data.name.empty() || data.hp > 0))
+                step.target = {team, data.sourceIndex};
+            else {
+                const int range = actor >= 0 ? own.units[static_cast<std::size_t>(actor)].abilityRange : 0;
+                int matches = 0, selected = -1;
+                for (std::size_t i = 0; i < own.units.size(); ++i) {
+                    const auto& unit = own.units[i];
+                    if (range > 0 && std::abs(static_cast<int>(i) - actor) > range) continue;
+                    if (unit.name != event.target || (unit.detailsKnown && unit.hp <= 0) ||
+                        (unit.kind != UnitKind::Light && unit.kind != UnitKind::Archer)) continue;
+                    ++matches;
+                    selected = static_cast<int>(i);
+                }
+                step.target = {team, matches == 1 ? selected : -1};
+            }
+            UnitSnapshot copy{UnitKind::Light, "", 0, 0, 0};
+            copy.detailsKnown = false;
+            if (step.target.valid()) copy = own.units[static_cast<std::size_t>(step.target.index)];
+            copy.name = data.name.empty() ? cloneidentity::numbered(event.target, own.clonesCreated + 1)
+                                          : data.name;
+            if (data.hp > 0 && copy.detailsKnown) copy.hp = data.hp;
+            step.clone = copy;
+        }
         if (step.target.valid())
             step.subjectKind =
                 frame.armies[targetTeam].units[static_cast<std::size_t>(step.target.index)].kind;
@@ -181,10 +227,10 @@ public:
             if (auto unit = at(step.target))
                 applyEquipment(*unit, e.buff);
         } else if (e.type == EventType::Clone) {
-            const auto source = at(step.target);
-            if (source && step.actor.valid()) {
-                const auto copy = *source;
+            if (step.actor.valid() && step.clone) {
                 auto& army = frame.armies[step.actor.team];
+                const auto& copy = *step.clone;
+                army.clonesCreated = std::max(army.clonesCreated + 1, cloneidentity::parse(copy.name).number);
                 army.units.insert(army.units.begin() + step.actor.index, copy);
                 army.totalCost += copy.cost;
                 ++casters_[step.actor.team];

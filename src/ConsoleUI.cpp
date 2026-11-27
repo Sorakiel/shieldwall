@@ -1,6 +1,9 @@
 #include "ConsoleUI.h"
 #include "ConsoleView.h"
 #include "EventFormatter.h"
+#include "CloneIdentity.h"
+#include "CloneEventData.h"
+#include "Mage.h"
 #include <utility>
 
 ConsoleUI::ConsoleUI(std::istream& in, std::ostream& out)
@@ -14,7 +17,10 @@ std::optional<std::uint32_t> ConsoleUI::readSetupNumber(const std::string& promp
     return view_->readSetupNumber(prompt, min, max, cancel, initial);
 }
 
-void ConsoleUI::setStage(ViewStage stage) { view_->setStage(stage); }
+void ConsoleUI::setStage(ViewStage stage) {
+    if (stage == ViewStage::MainMenu) cloneCounts_ = {};
+    view_->setStage(stage);
+}
 void ConsoleUI::clearDisplay() { view_->clearDisplay(); }
 
 std::optional<std::uint32_t> ConsoleUI::readNumberCancelable(const std::string& prompt,
@@ -60,10 +66,15 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
         for (std::size_t i = 0; i < army.size(); ++i) {
             const Unit& unit = *army.at(i);
             const auto* archer = dynamic_cast<const Archer*>(&unit);
+            output.clonesCreated = std::max(output.clonesCreated, cloneidentity::parse(unit.name()).number);
+            const auto* mage = dynamic_cast<const Mage*>(&unit);
+            if (mage) output.clonesCreated = std::max(output.clonesCreated, mage->clonesCreated());
             output.units.push_back({unit.kind(), unit.name(), unit.hp(), unit.maxHp(), unit.cost(),
-                                    unit.meleeAttack(), unit.defense(), archer ? archer->rangedAttack() : 0});
+                                    unit.meleeAttack(), unit.defense(), archer ? archer->rangedAttack() : 0,
+                                    true, mage ? mage->range() : archer ? archer->range() : 0});
         }
     }
+    for (int team = 0; team < 2; ++team) cloneCounts_[team] = snapshot.armies[team].clonesCreated;
     snapshot.finished = a.isDefeated() || b.isDefeated();
     // Копии остаются валидными после removeDead() на следующем ходе.
     view_->showArmies(snapshot);
@@ -71,7 +82,16 @@ void ConsoleUI::showArmies(Army& a, Army& b) {
 
 void ConsoleUI::showEvents(const std::vector<BattleEvent>& events, std::mt19937& rng) {
     for (const BattleEvent& event : events) {
-        view_->battleEvent(event, EventFormatter::format(event, rng, false));
+        std::string cloneName;
+        if (event.type == EventType::Clone && event.team >= 0 && event.team < 2) {
+            const auto data = presentation::cloneData(event);
+            auto& number = cloneCounts_[static_cast<std::size_t>(event.team)];
+            ++number;
+            cloneName = data.name.empty() ? cloneidentity::numbered(event.target, number) : data.name;
+            number = std::max(number, cloneidentity::parse(cloneName).number);
+        }
+        // Formatting every event preserves the separate journal RNG sequence.
+        view_->battleEvent(event, EventFormatter::format(event, rng, false, cloneName));
     }
 }
 

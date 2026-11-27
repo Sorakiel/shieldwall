@@ -42,4 +42,5 @@ public:
 private:
     std::unique_ptr<View> ownedView_;
     View* view_;
+    std::array<std::size_t, 2> cloneCounts_{};
 };

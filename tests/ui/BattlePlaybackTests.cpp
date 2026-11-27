@@ -1,5 +1,7 @@
 #include "BattlePlayback.h"
 #include "BattleLog.h"
+#include "BattleMotion.h"
+#include "ArmyUi.h"
 #include <iostream>
 #include <limits>
 #include <cmath>
@@ -87,7 +89,7 @@ void testEffectsChangeOnlySnapshots() {
     CHECK(s.armies[0].units.size() == 5);
     playback.commit(s, step);
     CHECK(s.armies[0].units.size() == 6);
-    CHECK(s.armies[0].units[3].kind == UnitKind::Archer && s.armies[0].units[3].name == "Дарр");
+    CHECK(s.armies[0].units[3].kind == UnitKind::Archer && s.armies[0].units[3].name == "Дарр [Клон 1]");
     CHECK(s.armies[0].units[3].hp == 16);
     CHECK(s.armies[0].units[3].attack == 4 && s.armies[0].units[3].rangedAttack == 11);
     CHECK(s.armies[0].units[4].kind == UnitKind::Mage);
@@ -181,8 +183,129 @@ void testDuplicateNamesAndReplayBoundary() {
     shot.turn = 1;
     CHECK(playback.begin(s, shot).actor.index == 2);
 }
+void testPlaybackRatesAndScrolling() {
+    for (const auto speed : presentation::Speeds) {
+        presentation::Step step;
+        step.event.type = EventType::Shot;
+        const auto seconds = presentation::duration(step.event.type) * 2 / speed;
+        CHECK(!step.advance(presentation::playbackSeconds(seconds * .49f, speed)));
+        CHECK(step.advance(presentation::playbackSeconds(seconds * .02f, speed)));
+        CHECK(!step.advance(presentation::playbackSeconds(seconds, speed, true)));
+        CHECK(step.advance(presentation::playbackSeconds(seconds, speed)) == false);
+        CHECK(step.finished());
+    }
+    CHECK(presentation::playbackSeconds(2, .5f) == .5f);
+    CHECK(presentation::playbackSeconds(2, 1) == 1);
+    CHECK(presentation::playbackSeconds(2, 2) == 2);
+    CHECK(presentation::playbackSeconds(2, 4) == 4);
+    CHECK(presentation::playbackSeconds(2, 1, true) == 0);
+    presentation::Scroll scroll(0, 10);
+    CHECK(scroll.value() == 0);
+    CHECK(!scroll.advance(scroll.duration * .4f));
+    CHECK(scroll.value() > 0 && scroll.value() < 10);
+    const auto middle = scroll.value();
+    CHECK(!scroll.advance(presentation::playbackSeconds(1, 1, true)) && scroll.value() == middle);
+    presentation::Scroll reverse(scroll.value(), 3);
+    CHECK(reverse.value() == middle);
+    CHECK(scroll.advance(100) && scroll.value() == 10);
+    CHECK(reverse.advance(100) && reverse.value() == 3);
+    CHECK(presentation::focusOffset(0, 8, 9, 10, 5) == 5);
+    CHECK(presentation::focusOffset(5, 7, 9, 10, 5) == 5);
+    CHECK(presentation::focusOffset(5, 2, 4, 10, 5) == 2);
+}
+void testDragAcrossPageBoundary() {
+    presentation::DragPager pager;
+    CHECK(presentation::dragPageDirection(1317, 650) == 1);
+    CHECK(presentation::dragPageDirection(117, 650) == -1);
+    CHECK(presentation::dragPageDirection(1317, 450) == 0);
+    CHECK(pager.advance(1, .3f, false, true) == 0);
+    CHECK(pager.advance(1, .26f, false, true) == 1);
+    std::vector<ArmyCardSlot> secondPage, firstPage;
+    for (std::size_t i = 0; i < 8; ++i) {
+        firstPage.push_back({i, 119.5f + i * 151});
+        secondPage.push_back({8 + i, 119.5f + i * 151});
+    }
+    CHECK(armyDropIndex(7, 120.5f, secondPage) == 8); // 8th -> after 9th
+    CHECK(armyDropIndex(8, firstPage.back().center - 1, firstPage) == 7); // 9th -> before 8th
+    pager.reset();
+    CHECK(pager.advance(-1, 1, false, true) == 0);
+    CHECK(pager.advance(1, 1, true, false) == 0);
+    CHECK(pager.advance(-1, .56f, true, false) == -1);
+}
+void testExactAndAmbiguousCloneSources() {
+    struct DetailedClone : BattleEvent {
+        int sourceIndex = -1;
+        std::string cloneName;
+        int cloneHp = -1;
+    };
+    for (int team = 0; team < 2; ++team) {
+        BattleSnapshot s;
+        s.armies[team].units = {{UnitKind::Archer, "Дарр", 20, 20, 18, 4, 0, 11},
+                                {UnitKind::Archer, "Дарр", 1, 20, 18, 4, 0, 11},
+                                {UnitKind::Mage, "Маг", 14, 14, 25}};
+        DetailedClone event;
+        event.type = EventType::Clone; event.team = team; event.turn = 1;
+        event.actor = "Маг"; event.target = "Дарр";
+        event.sourceIndex = 1; event.cloneName = "Дарр [Клон 1]"; event.cloneHp = 1;
+        presentation::Playback playback;
+        auto step = playback.begin(s, event);
+        CHECK(step.target.index == 1 && step.clone->hp == 1 && step.clone->maxHp == 20);
+        CHECK(step.clone->detailsKnown && step.clone->name == event.cloneName);
+        CHECK(step.advance(presentation::duration(event.type) * .51f));
+        playback.commit(s, step);
+        CHECK(s.armies[team].units[2].hp == 1 && s.armies[team].units[2].name == event.cloneName);
+        CHECK(presentation::actorSlot(step).index == 3 && presentation::targetSlot(step).index == 1);
+        CHECK(s.armies[team].units[0].hp == 20 && s.armies[team].units[1].hp == 1);
+    }
+    auto s = frame();
+    DetailedClone unset;
+    unset.type = EventType::Clone; unset.team = 0; unset.turn = 1;
+    unset.actor = "Зэн"; unset.target = "Дарр"; unset.sourceIndex = 0; unset.cloneHp = 0;
+    presentation::Playback partial;
+    const auto safe = partial.begin(s, unset);
+    CHECK(safe.target.index == 2 && safe.clone->hp == 16);
+
+    s.armies[0].units[1] = s.armies[0].units[2];
+    s.armies[0].units[1].hp = 1;
+    presentation::Playback playback;
+    BattleEvent oldEvent{EventType::Clone, 1, 0, "Зэн", "Дарр"};
+    const auto ambiguous = playback.begin(s, oldEvent);
+    CHECK(!ambiguous.target.valid() && !ambiguous.clone->detailsKnown);
+    playback.commit(s, ambiguous);
+    CHECK(!s.armies[0].units[3].detailsKnown && s.armies[0].units[3].name == "Дарр [Клон 1]");
+    s = frame();
+    playback.reset();
+    s.armies[0].clonesCreated = 8;
+    auto numbered = playback.begin(s, oldEvent);
+    CHECK(numbered.clone->name == "Дарр [Клон 9]" && numbered.clone->detailsKnown);
+    s = frame();
+    s.armies[0].units[0] = {UnitKind::Archer, "Дарр", 20, 20, 18};
+    s.armies[0].units[2].hp = 1;
+    s.armies[0].units[3].abilityRange = 1;
+    playback.reset();
+    const auto nearby = playback.begin(s, oldEvent);
+    CHECK(nearby.target.index == 2 && nearby.clone->hp == 1 && nearby.clone->detailsKnown);
+}
+void testQuietCastKeepsCasterOrder() {
+    BattleSnapshot s;
+    s.armies[0].units = {{UnitKind::Light, "Дарр", 20, 20, 10},
+                         {UnitKind::Mage, "Маг", 14, 14, 25}, {UnitKind::Mage, "Маг", 14, 14, 25}};
+    presentation::Playback playback;
+    BattleEvent failed{EventType::CloneFailed, 1, 0, "Маг", "Дарр"};
+    CHECK(!visibleBattleEvent(failed.type));
+    CHECK(playback.begin(s, failed).actor.index == 1);
+    BattleEvent success{EventType::Clone, 1, 0, "Маг", "Дарр"};
+    auto step = playback.begin(s, success);
+    CHECK(step.actor.index == 2 && step.clone->name == "Дарр [Клон 1]");
+    playback.commit(s, step);
+    CHECK(s.armies[0].units[2].kind == UnitKind::Light && s.armies[0].clonesCreated == 1);
+}
 } // namespace
 int main() {
+    testPlaybackRatesAndScrolling();
+    testDragAcrossPageBoundary();
+    testExactAndAmbiguousCloneSources();
+    testQuietCastKeepsCasterOrder();
     testTimingAndJournal();
     testEffectsChangeOnlySnapshots();
     testEquipmentStatsAtImpact();

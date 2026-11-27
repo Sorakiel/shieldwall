@@ -7,10 +7,12 @@
 #include "BattleLog.h"
 #include "BattlePlayback.h"
 #include "ArmyUi.h"
+#include "BattleMotion.h"
 
 namespace sfmlui {
 inline constexpr float Width = 1440.f, Height = 900.f;
-inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 104, Speed = 105, Pause = 106;
+inline constexpr int Next = 100, Auto = 101, Submit = 102, Save = 103, Cancel = 104, Speed = 105, Pause = 106,
+                     Speed2 = 107, Speed4 = 108, SpeedHalf = 109;
 inline constexpr int RemoveBase = 1000;
 inline constexpr float FooterButtonWidth = 246.f, FooterGap = 12.f, FooterHeight = 52.f;
 inline constexpr sf::Vector2f RosterCardSize{139.f, 140.f};
@@ -51,6 +53,7 @@ struct State {
     std::vector<MenuChoice> choices;
     std::vector<std::string> notices;
     std::array<std::size_t, 2> offsets{};
+    std::array<std::optional<presentation::Scroll>, 2> scrolls{};
     bool recruiting = false, waiting = false, automatic = false, playing = false, paused = false;
     bool enteringNumber = false, enteringText = false, selectAll = false;
     NumberCancel numberCancel = NumberCancel::MainMenu;
@@ -61,6 +64,10 @@ struct State {
     std::optional<DragState> drag;
     std::optional<RosterTransition> rosterTransition;
 };
+inline float displayedOffset(const State& state, int team) {
+    return state.scrolls[team] ? state.scrolls[team]->value() : static_cast<float>(state.offsets[team]);
+}
+inline bool scrolling(const State& state) { return state.scrolls[0] || state.scrolls[1]; }
 class Scene {
 public:
     explicit Scene(const std::filesystem::path& assetDirectory);
@@ -86,6 +93,7 @@ private:
     std::vector<Button> buttons_;
     std::vector<RosterCard> rosterCards_;
     std::vector<sf::FloatRect> textBounds_;
+    std::optional<sf::FloatRect> clip_;
     void box(float x, float y, float w, float h, sf::Color fill, float radius = 12.f,
              sf::Color stroke = sf::Color::Transparent);
     void line(sf::Vector2f a, sf::Vector2f b, sf::Color color, float thickness = 1.f);
@@ -101,6 +109,8 @@ private:
     void button(const std::string& label, float x, float y, float w, int action, bool enabled = true,
                 bool primary = false, float h = 46.f);
     void crest(float x, float y, float size, sf::Color color);
+    void callout(const std::string& value, sf::Vector2f center, sf::Color color, float opacity = 1.f,
+                 unsigned size = 23, char32_t glyph = 0);
     void warrior(UnitKind kind, float x, float y, float size, sf::Color color, bool facingLeft = false,
                  float opacity = 1.f);
     void background(const State& state);
