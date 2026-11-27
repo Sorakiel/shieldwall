@@ -128,10 +128,8 @@ struct SfmlView::Impl {
         }
     }
     bool common(int action) {
-        if (action == sfmlui::SpeedHalf || action == sfmlui::Speed ||
-            action == sfmlui::Speed2 || action == sfmlui::Speed4) {
-            state.speed = action == sfmlui::SpeedHalf ? .5f : action == sfmlui::Speed ? 1.f
-                        : action == sfmlui::Speed2 ? 2.f : 4.f;
+        if (action == sfmlui::SpeedHalf || action == sfmlui::Speed || action == sfmlui::Speed2) {
+            state.speed = action == sfmlui::SpeedHalf ? .5f : action == sfmlui::Speed ? 1.f : 2.f;
             return true;
         }
         if (action == sfmlui::Pause) {

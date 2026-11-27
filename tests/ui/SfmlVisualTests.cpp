@@ -313,9 +313,9 @@ int main(int argc, char** argv) {
                 [&](const std::u32string& row) { return scene.textWidth(sf::String(row)); }, LogWidth);
         };
         State speeds = battleState;
-        speeds.speed = 4;
+        speeds.speed = 2;
         render("38-direct-speeds", speeds);
-        for (const auto action : {SpeedHalf, Speed, Speed2, Speed4})
+        for (const auto action : {SpeedHalf, Speed, Speed2})
             if (!getButton(action).enabled) throw std::runtime_error("Direct speed selector is disabled");
         speeds.speed = .5f;
         render("38-half-speed", speeds);
@@ -327,6 +327,12 @@ int main(int argc, char** argv) {
             auto unit = travel.battle.armies[0].units[static_cast<std::size_t>(i % 5)];
             unit.name = "Боец " + std::to_string(i + 1);
             travel.battle.armies[0].units.push_back(unit);
+        }
+        State bars = travel;
+        bars.battle.armies[1].units = bars.battle.armies[0].units;
+        for (const auto offset : {0.f, 7.5f, 15.f}) {
+            bars.offsets = {offset, offset};
+            render("51-scrollbar-direction-" + std::to_string(offset), bars);
         }
         travel.offsets[0] = 12;
         for (int i = 0; i < 3; ++i) {

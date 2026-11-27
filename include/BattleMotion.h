@@ -5,12 +5,12 @@
 #include <cstddef>
 
 namespace presentation {
-inline constexpr std::array<float, 4> Speeds{.5f, 1.f, 2.f, 4.f};
-// New 1x is the former 0.5x. Focus never controls the battle clock.
+inline constexpr std::array<float, 3> Speeds{.5f, 1.f, 2.f};
+// Playback uses the original animation durations and the selected multiplier.
 inline float playbackSeconds(float seconds, float speed, bool paused = false) {
     if (paused || !std::isfinite(seconds) || seconds < 0 || !std::isfinite(speed) || speed <= 0)
         return 0;
-    return seconds * speed * .5f;
+    return seconds * speed;
 }
 inline float smooth(float t) {
     t = std::clamp(t, 0.f, 1.f);

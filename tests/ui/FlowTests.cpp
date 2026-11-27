@@ -306,7 +306,8 @@ void testPlaybackSaves(const UnitCatalog& catalog, bool closeWindow = false) {
     Fixture file;
     FlowView v;
     v.numbers = {200, 42};
-    v.actions = {1, 2, 1, 3, 30, 3, 30, 1, 0};
+    // Two heavy fighters keep both of the tested turns active, independent of auto-factory balance.
+    v.actions = {1, 2, 1, 2, 2, 30, 2, 2, 30, 1, 0};
     v.texts = {"turn-zero", "turn-one"};
     int seen = 0;
     bool aborted = false;
