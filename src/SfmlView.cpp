@@ -102,7 +102,8 @@ struct SfmlView::Impl {
     }
     void notice(const std::string& text) {
         if (text.rfind("Набор армии:", 0) == 0 || text.rfind("Управление ходами:", 0) == 0 ||
-            text.rfind("Видимость армий при наборе:", 0) == 0)
+            text.rfind("Видимость армий при наборе:", 0) == 0 ||
+            text.rfind("Бюджет каждой армии:", 0) == 0)
             return;
         state.notices.push_back(text);
         if (state.notices.size() > 4)
